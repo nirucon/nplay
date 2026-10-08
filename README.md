@@ -2,7 +2,7 @@
 
 NPLAY 1.4.1 is a keyboard-first terminal music, radio and podcast player built around `mpv`, with local music, Navidrome/Subsonic, Sveriges Radio, custom radio streams, YouTube audio, playlists, artwork and CAVA visualization.
 
-**NPLAY is a custom application made for Nicklas Rudolfsson, but it is fully functional and configurable for other users as well.**
+**NPLAY is a custom application made for Ing Leif Nicklas Rudolfsson, but it is fully functional and configurable for other users as well.**
 
 ## What makes NPLAY different
 
