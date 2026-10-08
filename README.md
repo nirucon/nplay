@@ -104,3 +104,8 @@ These are the default locations; XDG variables are respected for data, config, a
 ## Status and scope
 
 This repository tracks a **personal, evolving application**, currently at version **1.3.5**. Working features are preserved where practical as the code is gradually made more modular. External provider behavior may change independently of NPLAY. This is provided **as-is**, without a support or compatibility guarantee.
+
+## License
+
+MIT License for original NPLAY project code. Copyright (c) 2026 Nicklas Rudolfsson.
+See [LICENSE](LICENSE). Third-party dependencies retain their respective licenses.
