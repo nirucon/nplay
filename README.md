@@ -1,111 +1,110 @@
-# NPLAY
+# NPLAY 1.4.1
 
-**NPLAY 1.3.5** · A keyboard-first terminal music, radio, and podcast player for Linux.
+NPLAY 1.4.1 is a keyboard-first terminal music, radio and podcast player built around `mpv`, with local music, Navidrome/Subsonic, Sveriges Radio, custom radio streams, YouTube audio, playlists, artwork and CAVA visualization.
 
-> **Personal project:** NPLAY is designed primarily for my own Linux desktop setup, workflow, and listening habits. It is published as source code and documentation for anyone interested, but it is **not** a general-purpose commercial product or a promise of support for every environment. Features and priorities reflect my own needs.
+**NPLAY is a custom application made for Nicklas Rudolfsson, but it is fully functional and configurable for other users as well.**
 
-NPLAY brings local music, Navidrome/Subsonic, Spotify, Sveriges Radio, custom radio stations, podcasts, and YouTube audio into a single minimal terminal UI. It uses `mpv` for most audio playback and optionally `librespot` for local Spotify Connect playback.
+## What makes NPLAY different
 
-## Highlights
+- One terminal UI for local files, Navidrome, radio, podcasts and YouTube audio.
+- Recursive local library scan with tags, folder covers and embedded artwork.
+- Playback contexts: albums, lists and playlists continue automatically; `n` / `p` move next/previous and `Ctrl+N` opens Now Playing.
+- Cross-source local playlists, persistent queue, favorites and history.
+- Source management: Navidrome, Sveriges Radio, YouTube and custom radio can be enabled/disabled live. Defaults are enabled.
+- Quick Play / global search with `/`; only enabled sources participate.
+- Responsive Kitty artwork, plus an intentional text/media-card fallback when terminal graphics are unavailable.
+- Responsive full-width CAVA visualizer.
+- Live themes: Niru Noir (default), Satie, C. Larsson, Hackerman, Commodore 64 and Omarchy theme following.
+- Normal, Artwork and Visualizer Now Playing layouts.
+- Context-sensitive footer and complete `?` help.
 
-- **Keyboard-first interface:** fast browsing, contextual actions, search, queue management, playback controls, and command prompt.
-- **Local music library:** recursive indexing, tags, embedded/folder artwork, albums, artists, folders, and random discovery.
-- **Multiple sources:** local files, Navidrome/Subsonic, Spotify (optional), Sveriges Radio, custom streams, and YouTube audio (optional).
-- **Listening workflow:** source-aware playlists, queue, favorites, history, ratings, bookmarks, sleep timer, and session resume.
-- **Terminal presentation:** Kitty artwork where supported, usable text fallback elsewhere, CAVA visualization, and restrained themes including Niru Noir and Omarchy-follow mode.
-- **Linux desktop integration:** optional MPRIS/media keys and desktop notifications.
-- **Persistent data protection:** replaceable application code is kept separate from user configuration, credentials, SQLite library, and runtime state.
+Browse is organized as **Library**, **Discover**, **Playback** and **NPLAY**. Settings is organized into **Appearance**, **Sources**, **Library**, **Playback** and **System**.
 
-Some features depend on external services, their APIs, and system packages. Spotify local playback uses Spotify Connect through `librespot`, not `mpv`; a suitable Spotify account and network connectivity are required.
+Start with `b` for Browse, `/` for Quick Play/Search and `?` for complete in-app help. Configuration lives under `~/.config/nplay/`; library/state data is preserved across upgrades.
 
-## My setup
+See `INSTALL.md`, `KEYS.md`, `CONFIGURATION.md`, `ARCHITECTURE.md` and `CHANGELOG.md`.
 
-NPLAY is primarily built for **Omarchy / Arch Linux**, running in **Kitty** with **Fish** and **Hyprland**. I also use/test it on **Debian**. The UI prefers a clean, dark, minimalist appearance, keyboard interaction, and integration with the surrounding Linux desktop. Kitty is optional: the player should remain usable without terminal graphics.
+## Persistence and resume
 
-The code aims to support Arch-based and Debian-based distributions, but the full combination of providers, optional dependencies, and desktop integrations is not continuously tested across all systems.
+NPLAY deliberately does **not** autoplay after a restart. The last track is restored as a resume candidate instead. Press `Space` or `Enter` in Now Playing to continue. NPLAY persists the last track, playback position, volume, queue and playback context. Local playlists, favorites, history, custom radio stations and the indexed local library live in the persistent SQLite database and are not part of the replaceable application code.
 
-## Install
+Local Music is recursive and uses `~/Music` by default. Multiple roots can be configured under **Settings → Library → Music Folders**. Automatic incremental refresh on startup is enabled by default and can be disabled there; `u` always starts a manual refresh.
 
-On Arch / Omarchy (Fish or Bash), Debian, or Ubuntu:
+Local Music provides All Tracks, Artists, Albums, Folders, Recently Added, Random Tracks, Random Album and Search. Folder artwork is preferred when explicitly present; otherwise embedded artwork is extracted to NPLAY's cache without modifying the audio file.
 
-```sh
-git clone https://github.com/nirucon/nplay.git
-cd nplay
-./install.sh
-```
 
-The installer checks for `python3` and `mpv`, offers to install missing dependencies through `pacman` or `apt`, and treats CAVA, yt-dlp, librespot, MPRIS, and notification support as optional according to availability. It may request `sudo` to install distribution packages; NPLAY itself installs into the user's home directory.
+## Playback quality
 
-After installation:
+0.6.1 adds a playback-quality layer rather than another provider. ReplayGain normalization is **on by default** (`Auto` mode); gapless is **off by default**. Playback contexts support repeat, shuffle and Smart Shuffle, and Now Playing shows a compact `UP NEXT` line plus active playback badges such as `RG TRACK`, `GAPLESS`, `SHUFFLE SMART` and `REPEAT CONTEXT`.
 
-```sh
-nplay --version
-nplay --doctor
-nplay
-```
+Use `s` to cycle shuffle and `x` to cycle repeat. Playback quality can also be changed live under **Settings → Playback** or with `:normalize`, `:gapless`, `:shuffle` and `:repeat`.
 
-If `nplay` is not found in a new shell, ensure `~/.local/bin` is on `PATH`. On Fish, for example:
+### Command UX
 
-```fish
-fish_add_path --move --prepend ~/.local/bin
-```
+The `:` prompt behaves like a small NPLAY command shell: Esc cancels, Tab completes commands/options, and Up/Down recall command history. This keeps advanced controls discoverable without crowding the normal browser UI.
 
-**Upgrade:** pull the repository and rerun `./install.sh`. The installer keeps user data/configuration separate from replaceable program files and copies important existing state to an upgrade backup location before replacing code. Do not delete your XDG data/config directories while upgrading.
+### Resume artwork
 
-For details, see [INSTALL.md](INSTALL.md).
+Navidrome authentication URLs are never persisted as session data. NPLAY stores stable cover identity and reconstructs the authenticated URL when needed. The artwork cache uses that stable identity, so already cached artwork can be reused after restarting NPLAY.
 
-## Quick start
 
-| Key | Action |
-| --- | --- |
-| `b` | Browse sources and libraries |
-| `Ctrl+P` | Universal Quick Find |
-| `/` | Filter the current list |
-| `Space` | Play / pause |
-| `z` | Stop |
-| `n` / `p` | Next / previous |
-| `Ctrl+N` | Now Playing |
-| `.` | Contextual actions |
-| `:` | Command prompt |
-| `?` | Help |
-| `Q` | Quit |
+## 0.6.1 note
 
-See [KEYS.md](KEYS.md) for the full reference. Settings are available from Browse; most providers can be enabled or disabled individually.
+Now Playing transport telemetry (elapsed time and progress indicator) refreshes independently at a controlled cadence while the CAVA visualizer retains its isolated high-frequency render path. This keeps playback state live without bringing back full-screen visualizer flicker.
 
-## Spotify: important network requirement
+## NPLAY 1.4.1 interaction model
 
-Spotify search and account actions use the Spotify Web API over HTTPS. **Local playback through librespot additionally needs to connect to Spotify access points**, including TCP port **4070** in environments we have tested. Corporate, managed, or restrictive Wi-Fi networks may allow browser authorization and Spotify search while blocking the actual Connect receiver. Typical symptom: browser OAuth succeeds, but the **NPLAY** playback device never appears.
+- `Ctrl+P` opens **Universal Quick Find** across the local library and enabled providers. Results are grouped by source.
+- `/` filters the **current** list locally and instantly; an empty filter restores the list.
+- `S` cycles publication-date sorting where date metadata exists: Relevance → Newest → Oldest. SR episode lists default to newest first.
+- YouTube and podcast results show publication dates when the provider exposes them without an expensive per-result lookup.
+- The global transport footer remains live while browsing, searching, viewing playlists, radio and settings.
+- Search/list rendering is responsive: wide terminals use title/creator/date columns; narrower terminals collapse metadata into a compact row.
 
-When troubleshooting, first test the AP endpoint shown in your `librespot` log from the **same network** (for example, `nc -4 -vz -w 5 ap-gew4.spotify.com 4070`). The endpoint may change. A timeout is a network diagnostic, **not by itself proof of invalid authorization**. Do not weaken a managed network's firewall policies; use an authorized network or consult its administrator.
+Publication dates are best-effort. NPLAY deliberately does not perform dozens of extra network requests merely to populate missing dates.
 
-Spotify is optional and disabled by default. See [CONFIGURATION.md](CONFIGURATION.md) for Web API setup and the explicit `Spotify → Local Playback → AUTHORIZE / REAUTHORIZE` flow.
+### Spotify Preview
 
-## Files and upgrade safety
+NPLAY 1.4.1 combines the official Spotify Web API with an optional local `librespot` playback engine. Search, playlists, metadata and library actions use the Web API; audio can play directly on this computer through the NPLAY-managed local engine. External Spotify Connect targets are still available but are no longer required. See `CONFIGURATION.md` for setup details.
 
-| Location | Purpose |
-| --- | --- |
-| `~/.local/lib/nplay/` | Installed application code (replaceable) |
-| `~/.local/bin/nplay` | Launcher |
-| `~/.config/nplay/` | User configuration and secrets |
-| `~/.local/share/nplay/` | Persistent library database, Spotify receiver cache, and other data |
-| `~/.local/state/nplay/` | Logs, session state, and upgrade backups |
 
-These are the default locations; XDG variables are respected for data, config, and state by the application/installer where applicable. Do not publish `config.ini`, `secrets.ini`, databases, logs, or Spotify cache from your own machine. This repository contains a **sample configuration only**.
+## Spotify local playback (1.1.3)
 
-## Project documentation
+`Spotify → Local playback` manages a private librespot receiver named **NPLAY**. On first use librespot may open its own browser OAuth authorization; its credential cache is stored under the NPLAY XDG data directory with mode 0700. Later starts reuse that cache. Audio uses the PulseAudio backend, which routes through PipeWire on normal Omarchy/Arch and modern Debian desktops.
 
-- [Installation](INSTALL.md) – dependencies, clean install, and upgrades
-- [Configuration](CONFIGURATION.md) – sources, playback settings, credentials, and desktop integration
-- [Keyboard reference](KEYS.md) – shortcuts and commands
-- [Architecture](ARCHITECTURE.md) – project organization and playback architecture
-- [Changelog](CHANGELOG.md) – release history
-- [Publishing and data safety](PUBLISHING.md) – what belongs in the public repository
+NPLAY owns the librespot process and stops it when NPLAY exits. If librespot is unavailable, every non-Spotify source remains fully functional and Spotify can still use an external Connect device.
 
-## Status and scope
 
-This repository tracks a **personal, evolving application**, currently at version **1.3.5**. Working features are preserved where practical as the code is gradually made more modular. External provider behavior may change independently of NPLAY. This is provided **as-is**, without a support or compatibility guarantee.
+## Spotify local authorization persistence (1.1.3)
+Local librespot authorization is a one-time step under normal operation. Credentials are stored in NPLAY's persistent XDG data directory and are reused across NPLAY restarts and code upgrades. Reauthorization is only expected if credentials are removed/revoked, Spotify invalidates them, or the user explicitly disconnects/resets Spotify.
 
-## License
 
-MIT License for original NPLAY project code. Copyright (c) 2026 Nicklas Rudolfsson.
-See [LICENSE](LICENSE). Third-party dependencies retain their respective licenses.
+## Spotify continuity and CAVA (1.1.3)
+
+Local Spotify playback is a first-class NPLAY backend. Album and playlist playback continues automatically in context, pause/resume preserves position, local Connect sessions are rebound after restart, and CAVA can visualize the librespot output through the normal system audio capture path. Spotify audio is not routed through mpv and NPLAY does not apply ReplayGain/DSP to Spotify content.
+
+## Linux desktop notifications
+
+NPLAY 1.4.1 can show a system Now Playing notification when the track changes, including artwork when available. Notifications and notification artwork are both enabled by default and independently configurable in Settings → Playback.
+
+## NPLAY 1.0
+
+The first stable release adds Linux MPRIS/media-key integration, complete queue management, ratings, listening statistics, smart playlists, radio discoveries, sleep timers, richer track information and cross-source matching in Universal Quick Find. Local library scanning remains designed for large collections with WAL, short batched writes, incremental metadata checks, symlink-aware roots and non-destructive offline handling.
+
+Useful commands: `:sleep 30`, `:sleep track`, `:sleep album`, `:sleep off`, `:smart`, `:stats`, `:discover`, `:rating 0-5`, `:queue-save`, `:queue-clear`.
+
+Lyrics are intentionally outside the 1.0 scope.
+
+## 1.1 playback integrity
+
+NPLAY 1.1 treats Spotify and mpv as transports behind one NPLAY-owned playback model. Queue, Play Next, Sleep Timer, MPRIS and source handoff therefore keep the same semantics across Local, Navidrome, Spotify, YouTube and radio. Local library schema 4 adds rich tag/technical metadata and listening statistics now measure elapsed listening time rather than summing nominal track durations.
+
+## 1.2 architecture and discovery
+
+NPLAY 1.2 begins a behavior-preserving modularization of the application. Cross-source search lives in `nplay/services/search.py` and discovery-radio generation in `nplay/services/radio.py`; playback/provider code remains behind existing interfaces so the verified Spotify and radio state machines are not rewritten merely for architectural style.
+
+Press `z` for a real Stop that clears Now Playing. Use Actions (`.`) on a playable item to start NPLAY Radio or bookmark a long-form position. CAVA keeps the existing Classic renderer by default; press `C` to cycle Classic, Gradient, Blocks and Dots, or choose the style under Settings → Appearance.
+
+## Custom themes (1.4.1)
+
+External TOML themes are supported without modifying the app. Open **Settings → Appearance → Theme → HOW TO INSTALL THEMES** for in-app instructions and a reload action. See [THEMES.md](THEMES.md) for the format and validation commands. No extra themes are bundled; a separate theme pack is planned.

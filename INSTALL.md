@@ -1,4 +1,4 @@
-# NPLAY 1.3.5 — installation
+# NPLAY 1.4.1 — installation
 
 NPLAY is a custom application made for Nicklas Rudolfsson, but is fully functional for other users.
 
@@ -12,8 +12,8 @@ NPLAY is a custom application made for Nicklas Rudolfsson, but is fully function
 Run:
 
 ```sh
-unzip NPLAY-1.3.5.zip
-cd NPLAY-1.3.5
+unzip NPLAY-1.4.1.zip
+cd NPLAY-1.4.1
 ./install.sh
 ```
 
@@ -32,7 +32,7 @@ Kitty is not required. In Kitty, NPLAY can render image artwork through `kitten 
 
 ## Upgrade data safety
 
-The installer replaces only the application code. Configuration, XDG state and `library.db` are preserved. This includes indexed Local Music, playlists, favorites, history and custom radio stations. NPLAY 1.3.5 performs an additive database migration on first start and keeps a one-time pre-migration database backup when upgrading an older schema.
+The installer replaces only the application code. Configuration, XDG state and `library.db` are preserved. This includes indexed Local Music, playlists, favorites, history and custom radio stations. The existing additive database migrations remain available when upgrading from older schemas; this UI-only release does not change the database schema.
 
 
 ## Spotify local authorization persistence (1.1.3)

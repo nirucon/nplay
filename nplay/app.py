@@ -613,8 +613,17 @@ class App(NavigationMixin):
 def doctor(a=None):
  a=a or App();print(f'NPLAY {__version__} by Nicklas Rudolfsson');print('python       OK');print('mpv          '+('OK' if shutil.which('mpv') else 'MISSING'));print('yt-dlp       '+((a.yt.version()+' · '+a.yt.binary) if a.yt.available() else 'optional / missing'));print('cava         '+('OK' if shutil.which('cava') else 'optional / missing'));print('mpris        '+('READY' if a.mpris.available else ('enabled / unavailable' if a.cfg.getbool('mpris_enabled',True) else 'off')));print('notifications '+(('ON · '+str(a.notifier.binary)) if a.notifier.enabled() else ('enabled / unavailable' if a.cfg.getbool('track_notifications',True) else 'off')));print('terminal     '+os.getenv('TERM','unknown'));print('kitty        '+('YES' if os.getenv('KITTY_WINDOW_ID') else 'no'));print('library      '+str(a.db.count())+' indexed tracks · schema '+str(a.db.schema_version()));print('navidrome    '+(('enabled / configured' if a.nav_configured() else 'enabled / not configured') if a.cfg.getbool('navidrome_enabled',True) else 'disabled'));print('spotify      '+(('enabled / connected' if a.spotify_configured() else 'enabled / setup required') if a.cfg.getbool('spotify_enabled',False) else 'disabled'));print('librespot     '+(('running' if a.spotify.local.running() else 'available') if a.spotify.local.available() else 'optional / missing'));print('sr           '+('enabled' if a.cfg.getbool('sr_enabled',True) else 'disabled'));print('youtube      '+('enabled' if a.cfg.getbool('youtube_enabled',True) else 'disabled'));print('custom radio '+('enabled' if a.cfg.getbool('custom_radio_enabled',True) else 'disabled'));print('music roots  '+' : '.join(a.roots()));print('config       '+str(a.cfg.path));print('log          '+str(LOG_PATH)+' · '+str(recent_error_count())+' recent warnings/errors');print('mpv log      '+str(STATE/'mpv.log'));return 0 if shutil.which('mpv') else 1
 def main():
- ap=argparse.ArgumentParser(prog='nplay');ap.add_argument('query',nargs='*');ap.add_argument('--version',action='store_true');ap.add_argument('--doctor',action='store_true');ap.add_argument('--scan',action='store_true');args=ap.parse_args()
+ ap=argparse.ArgumentParser(prog='nplay');ap.add_argument('query',nargs='*');ap.add_argument('--version',action='store_true');ap.add_argument('--doctor',action='store_true');ap.add_argument('--scan',action='store_true');ap.add_argument('--list-themes',action='store_true');ap.add_argument('--check-theme',metavar='FILE');args=ap.parse_args()
  if args.version:print(f'NPLAY {__version__}');return
+ if args.list_themes:
+  from .theme import available
+  for key,label in available():print(f'{key:20} {label}')
+  return
+ if args.check_theme:
+  from .theme import validate_theme
+  ok,msg=validate_theme(args.check_theme);print(msg)
+  if not ok:raise SystemExit(1)
+  return
  a=App()
  if args.doctor:raise SystemExit(doctor(a))
  if args.scan:r=a.scan();print(f"Scan · {r['checked']} checked · {r['new']} new · {r['updated']} updated · {r['removed']} removed · {r['total']} indexed");return

@@ -37,6 +37,29 @@ class SettingsController:
    except (ValueError,TypeError):ui.status('Enter a size in MB')
   elif s=='settings:art-cache-clear':ui.status(f'Artwork cache cleared · {a.artwork_cache.clear()} files')
   elif s=='settings:theme':ui.theme_menu()
+  elif s=='settings:theme-reload':
+   from ..theme import available,apply
+   names=dict(available())
+   if ui.theme not in names:ui.set_theme('niru-noir')
+   else:ui.palette=apply(ui.theme);ui.invalidate()
+   ui.status(f'Themes reloaded · {len(names)} available');ui.theme_menu()
+  elif s=='settings:theme-help':
+   from ..theme import THEME_DIR
+   ui.show_menu('CUSTOM THEMES · INSTALL GUIDE',[
+    ('THEME DIRECTORY','',str(THEME_DIR)),
+    ('','', ''),
+    ('1  Copy a .toml theme file','', 'Place it in the directory above'),
+    ('2  Reload custom themes','', 'Use the action below'),
+    ('3  Select your new theme','', 'Choose it in the theme list'),
+    ('','', ''),
+    ('OPEN THEME DIRECTORY','settings:theme-open','Open in your desktop file manager'),
+    ('RELOAD CUSTOM THEMES','settings:theme-reload','Scan for installed themes'),
+    ('BACK TO THEMES','settings:theme','Select an installed theme')])
+  elif s=='settings:theme-open':
+   from ..theme import THEME_DIR
+   from ..theme_actions import open_theme_directory
+   ok,msg=open_theme_directory(THEME_DIR)
+   ui.status(msg)
   elif s=='settings:view':ui.cycle_layout()
   elif s=='settings:visual':ui.toggle_visualizer()
   elif s=='settings:visual-style':ui.visualizer_style_menu()

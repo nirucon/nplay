@@ -1,3 +1,19 @@
+# 1.4.1 — Custom theme installation UX
+
+- Replace the technical in-app instructions with a short, actionable three-step guide.
+- Display the actual XDG theme directory in the app.
+- Add **Open theme directory**, using the desktop's `xdg-open` without executing theme content.
+- Display **No custom themes installed** in the theme picker when appropriate.
+- Keep **Reload custom themes** and all existing theme palettes.
+- No playback, Spotify, database, or installer architecture changes.
+
+# 1.4.0 — External theme support
+
+- Load validated user TOML themes from XDG_CONFIG_HOME/nplay/themes.
+- Theme picker includes installation guidance and a reload action.
+- CLI: --list-themes and --check-theme FILE.
+- No new bundled themes; existing built-in palettes and playback preserved.
+
 # 1.3.5 — Installer path hotfix
 
 - Fixes the 1.3.4 installer resolving the new application directory to `/nplay` when `~/.local/lib` did not already exist.

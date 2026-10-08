@@ -1,4 +1,4 @@
-import curses, os, re
+import curses, os, re, tomllib, logging
 from pathlib import Path
 
 # Built-in light themes use explicit xterm-256 indices as well as RGB metadata.
@@ -74,10 +74,56 @@ def omarchy_palette():
  if fg and bg:return {'label':'Omarchy','fg':fg,'bg':bg,'muted':muted or fg,'accent':accent or fg,'select_fg':bg,'select_bg':accent or fg}
  return None
 
-def available():return [('niru-noir','Niru Noir'),('satie','Satie'),('c-larsson','C. Larsson'),('hackerman','Hackerman'),('commodore64','Commodore 64'),('othala','Othala'),('ingwaz','Ingwaz'),('omarchy','Omarchy · follow active theme')]
+# External themes are declarative TOML, never executable code.
+THEME_DIR=Path(os.environ.get("XDG_CONFIG_HOME",str(Path.home()/".config")))/"nplay"/"themes"
+LOG=logging.getLogger(__name__)
+FIELDS=("fg","muted","accent","select_fg","select_bg","bg")
+HEX=re.compile(r"^#[0-9a-fA-F]{6}$")
+ID=re.compile(r"^[a-z][a-z0-9-]{0,47}$")
+
+def load_custom(path):
+ if path.suffix.lower()!=".toml" or path.is_symlink() or not path.is_file():
+  raise ValueError("Expected a regular .toml file (not a symlink)")
+ if path.stat().st_size>16384:raise ValueError("Theme exceeds 16 KiB")
+ with path.open("rb") as stream:data=tomllib.load(stream)
+ if set(data)-{"theme","colors"}:raise ValueError("Unknown section")
+ meta,colors=data.get("theme"),data.get("colors")
+ if not isinstance(meta,dict) or not isinstance(colors,dict):raise ValueError("Missing [theme] or [colors]")
+ key=meta.get("id")
+ if not isinstance(key,str) or not ID.fullmatch(key) or key!=path.stem:raise ValueError("id must match filename")
+ if key in THEMES or key=="omarchy":raise ValueError("Reserved theme id")
+ if set(meta)-{"id","name","author","version"} or set(colors)-set(FIELDS):raise ValueError("Unknown theme field")
+ label=meta.get("name",key)
+ if not isinstance(label,str) or not 1<=len(label)<=48 or any(ord(c)<32 for c in label):raise ValueError("Invalid name")
+ if not colors:raise ValueError("At least one color required")
+ p={k:v for k,v in THEMES["othala"].items() if not k.endswith("_idx") and k!="label"}
+ p["label"]=label
+ for field,value in colors.items():
+  if not isinstance(value,str) or not HEX.fullmatch(value):raise ValueError(field+": expected #RRGGBB")
+  p[field]=_rgb(value)
+ return key,p
+
+def custom_themes():
+ found={}
+ if THEME_DIR.is_dir():
+  for path in sorted(THEME_DIR.glob("*.toml"))[:128]:
+   try:
+    key,palette=load_custom(path);found[key]=palette
+   except (ValueError,OSError,tomllib.TOMLDecodeError) as exc:LOG.warning("Invalid theme %s: %s",path,exc)
+ return found
+
+def validate_theme(path):
+ try:
+  key,palette=load_custom(Path(path).expanduser())
+  return True,f"OK: {palette['label']} ({key})"
+ except (ValueError,OSError,tomllib.TOMLDecodeError) as exc:return False,f"Invalid theme: {exc}"
+
+def available():
+ builtins=[(key,THEMES[key]["label"]) for key in ("niru-noir","satie","c-larsson","hackerman","commodore64","othala","ingwaz")]
+ return builtins+[("omarchy","Omarchy · follow active theme")]+[(k,p["label"]+" · Custom") for k,p in custom_themes().items()]
 
 def apply(name):
- p=omarchy_palette() if name=='omarchy' else THEMES.get(name,THEMES['niru-noir'])
+ p=omarchy_palette() if name=='omarchy' else THEMES.get(name) or custom_themes().get(name) or THEMES['niru-noir']
  if name=='omarchy' and not p:p=THEMES['niru-noir'].copy();p['label']='Omarchy · fallback to Niru Noir'
  try:
   curses.start_color();curses.use_default_colors()

@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 # Code and persistent data MUST be separate. Older installers placed both below
 # ~/.local/share/nplay and atomically replaced that directory on upgrade, which
-# could delete library.db and librespot credentials. 1.3.5 fixes that layout.
+# could delete library.db and librespot credentials. 1.3.5 fixed that layout.
 # Application code is deliberately outside XDG_DATA_HOME. Do not canonicalize
 # this path via `cd` before it exists: on a first 1.3.x install that can turn
 # an empty dirname into `/nplay` and require root privileges.
@@ -12,7 +12,7 @@ DATA="${XDG_DATA_HOME:-$HOME/.local/share}/nplay"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/nplay"
 BIN="$HOME/.local/bin"; CFG="${XDG_CONFIG_HOME:-$HOME/.config}/nplay"
 B='\033[1m'; D='\033[2m'; G='\033[32m'; Y='\033[33m'; R='\033[31m'; N='\033[0m'
-printf "${B}NPLAY 1.3.5${N}\n${D}Terminal audio player · installer${N}\n\n"
+printf "${B}NPLAY 1.4.1${N}\n${D}Terminal audio player · installer${N}\n\n"
 if [[ -r /etc/os-release ]]; then . /etc/os-release; else ID=unknown; ID_LIKE=""; fi
 id="${ID:-unknown}"; like=" ${ID_LIKE:-} "
 if [[ "$id" =~ ^(arch|omarchy|cachyos|endeavouros)$ ]] || [[ "$like" == *" arch "* ]]; then

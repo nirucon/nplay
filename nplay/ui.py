@@ -195,10 +195,14 @@ class UI(RenderingMixin):
    if key==self.theme:return label
   return self.theme
  def theme_menu(self):
-  self.show_menu('THEME',[(('✓ ' if k==self.theme else '  ')+label,'theme:'+k,'Live preview') for k,label in available_themes()])
+  from .theme import custom_themes
+  items=[(('✓ ' if k==self.theme else '  ')+label,'theme:'+k,'Select theme') for k,label in available_themes()]
+  if not custom_themes():items.append(('NO CUSTOM THEMES INSTALLED','','Add .toml files to enable custom themes'))
+  items.extend([('HOW TO INSTALL THEMES','settings:theme-help','Step-by-step installation guide'),('RELOAD CUSTOM THEMES','settings:theme-reload','Rescan installed TOML files')])
+  self.show_menu('THEME',items)
  def set_theme(self,name):
   aliases={'noir':'niru-noir','niru':'niru-noir','larsson':'c-larsson','c.larsson':'c-larsson','hack':'hackerman','hacker':'hackerman','c64':'commodore64','commodore':'commodore64','commodore-64':'commodore64','oth':'othala','ing':'ingwaz','auto':'omarchy'};name=aliases.get((name or '').strip().lower(),(name or '').strip().lower())
-  if name not in dict(available_themes()):return self.status('Theme · noir | satie | larsson | othala | ingwaz | hackerman | c64 | omarchy')
+  if name not in dict(available_themes()):return self.status('Theme not found · Theme → How to install themes')
   self.theme=name;self.a.cfg.set('theme',name);self.palette=apply_theme(name);self.art.clear();self.art_visible=False;self.status('Theme · '+self.theme_label());self.invalidate()
  def cycle_visualizer_style(self):
   modes=['classic','gradient','blocks','dots'];cur=self.visual_style if self.visual_style in modes else 'classic';self.visual_style=modes[(modes.index(cur)+1)%len(modes)];self.a.cfg.set('visualizer_style',self.visual_style);self.status('CAVA style · '+self.visual_style.capitalize());self.invalidate()
