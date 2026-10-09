@@ -5,7 +5,7 @@ provided by a managed librespot process; external Spotify Connect devices remain
 """
 from __future__ import annotations
 from . import __version__
-import base64, hashlib, json, os, secrets, time, urllib.parse, urllib.request, urllib.error, webbrowser, subprocess, shutil, signal
+import base64, hashlib, json, os, secrets, time, urllib.parse, urllib.request, urllib.error, webbrowser, subprocess, shutil, signal, threading
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from .model import Track
@@ -46,7 +46,7 @@ class LocalSpotifyEngine:
  librespot's OAuth flow and cached by librespot itself.
  """
  def __init__(self,cfg):
-  self.cfg=cfg;self.proc=None;self.root=DATA/'spotify-local';self.cache=self.root/'cache';self.system_cache=self.root/'system-cache';self.log_path=STATE/'librespot.log'
+  self.cfg=cfg;self.proc=None;self._lock=threading.RLock();self.root=DATA/'spotify-local';self.cache=self.root/'cache';self.system_cache=self.root/'system-cache';self.log_path=STATE/'librespot.log'
   for d in (self.root,self.cache,self.system_cache):d.mkdir(parents=True,exist_ok=True);os.chmod(d,0o700)
  def binary(self):return shutil.which('librespot')
  def available(self):return bool(self.binary())
@@ -63,6 +63,9 @@ class LocalSpotifyEngine:
   try:return subprocess.run([b,'--version'],capture_output=True,text=True,timeout=2).stdout.strip()
   except Exception:return ''
  def start(self,oauth=False):
+  with self._lock:
+   return self._start_locked(oauth)
+ def _start_locked(self,oauth=False):
   if self.running():return True
   b=self.binary()
   if not b:raise RuntimeError('librespot is not installed · use Spotify → Local playback for setup')
@@ -77,7 +80,8 @@ class LocalSpotifyEngine:
   else:log.info('librespot start without OAuth · cached_files=%d',len(self.credential_files()))
   log_file=open(self.log_path,'ab',buffering=0)
   env=os.environ.copy();env.setdefault('PULSE_PROP_application.name','NPLAY · Spotify');env.setdefault('PULSE_PROP_media.role','music')
-  self.proc=subprocess.Popen(args,stdin=subprocess.DEVNULL,stdout=log_file,stderr=log_file,start_new_session=True,env=env)
+  try:self.proc=subprocess.Popen(args,stdin=subprocess.DEVNULL,stdout=log_file,stderr=log_file,start_new_session=True,env=env)
+  finally:log_file.close()
   time.sleep(.25)
   if self.proc.poll() is not None:
    log.error('librespot exited during startup rc=%s · log=%s',self.proc.returncode,self.log_path)
@@ -86,20 +90,37 @@ class LocalSpotifyEngine:
   log.info('librespot process started pid=%s oauth=%s log=%s',self.proc.pid,bool(oauth),self.log_path)
   return True
  def stop(self):
-  p=self.proc
-  if not p:return
-  if p.poll() is None:
-   try:os.killpg(p.pid,signal.SIGTERM);p.wait(timeout=2)
-   except Exception:
-    try:os.killpg(p.pid,signal.SIGKILL)
-    except Exception:pass
-  self.proc=None
+  with self._lock:
+   p=self.proc
+   if not p:return
+   try:
+    if p.poll() is None:
+     try:os.killpg(p.pid,signal.SIGTERM)
+     except ProcessLookupError:pass
+     try:p.wait(timeout=3)
+     except subprocess.TimeoutExpired:
+      try:os.killpg(p.pid,signal.SIGKILL)
+      except ProcessLookupError:pass
+      p.wait(timeout=3)
+    else:p.wait()
+   finally:
+    if self.proc is p:self.proc=None
+ def restart(self):
+  """Restart only this instance's owned child process; preserve OAuth caches."""
+  with self._lock:
+   self.stop()
+   return self.start(oauth=False)
  def log_tail(self,n=12):
   try:return '\n'.join(self.log_path.read_text(errors='replace').splitlines()[-n:])
   except Exception:return ''
 
+class LocalDeviceRegistrationTimeout(RuntimeError):
+ """Managed receiver is alive but not visible through Spotify Connect."""
+
+
 class Spotify:
- def __init__(self,cfg):self.cfg=cfg;self.local=LocalSpotifyEngine(cfg)
+ def __init__(self,cfg):
+  self.cfg=cfg;self.local=LocalSpotifyEngine(cfg);self._recovery_lock=threading.Lock();self._last_recovery=0.0
  def client_id(self):return self.cfg.get('spotify_client_id','').strip()
  def enabled(self):return self.cfg.getbool('spotify_enabled',False)
  def token_data(self):return self.cfg.spotify_tokens()
@@ -259,7 +280,32 @@ class Spotify:
    time.sleep(poll)
   names=', '.join(str(d.get('name')) for d in last if d.get('name')) or 'none'
   log.warning('librespot device registration timeout · visible_devices=%s · engine_running=%s',names,self.local.running())
-  raise RuntimeError(f'NPLAY local Spotify device did not register in time · visible devices: {names} · use Spotify → Local playback → Diagnostics; if authorization is required choose AUTHORIZE / REAUTHORIZE')
+  raise LocalDeviceRegistrationTimeout(f'NPLAY local Spotify device did not register in time · visible devices: {names} · use Spotify → Local playback → Diagnostics; if authorization is required choose AUTHORIZE / REAUTHORIZE')
+ def ensure_local_device(self,name=None,timeout=20.0):
+  """Recover once from a running-but-unregistered local Spotify receiver.
+
+  Never restart an external Connect device or a currently registered receiver.
+  Rate-limit restarts to prevent repeated failures from causing restart loops.
+  """
+  name=name or (self.cfg.get('spotify_local_name','NPLAY') or 'NPLAY')
+  self.local.start(oauth=False)
+  try:return self.wait_for_device(name,timeout)
+  except LocalDeviceRegistrationTimeout as first_error:
+   with self._recovery_lock:
+    # Another request may have recovered the receiver while we were waiting.
+    try:
+     for d in self.devices():
+      if d.get('id') and d.get('name')==name and not d.get('is_restricted'):return d
+    except RuntimeError:pass
+    now=time.monotonic()
+    if now-self._last_recovery<90:
+     raise RuntimeError(str(first_error)+' · automatic recovery cooldown active') from first_error
+    self._last_recovery=now
+    log.warning('Spotify Connect missing: restarting owned librespot once')
+    self.local.restart()
+    try:return self.wait_for_device(name,timeout)
+    except LocalDeviceRegistrationTimeout as e:
+     raise RuntimeError('Spotify Connect unavailable after one automatic local receiver restart · '+str(e)) from e
  def activate_device(self,device_id,timeout=8.0):
   """Transfer playback ownership and wait until Spotify reports this device active."""
   if not device_id:raise RuntimeError('Spotify device has no device ID')

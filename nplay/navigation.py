@@ -15,7 +15,7 @@ class NavigationMixin:
   items += [('LOCAL MUSIC','local',f'{self.db.count()} indexed tracks')]
   if self.cfg.getbool('navidrome_enabled',True):items.append(('NAVIDROME','nav','Configured' if self.nav_configured() else 'Set up server'))
   if self.cfg.getbool('spotify_enabled',False):items.append(('SPOTIFY','spotify','Connected' if self.spotify_configured() else 'Set up · Premium'))
-  items += [('PLAYLISTS','playlists','Local cross-source playlists'),('SMART PLAYLISTS','smart','Dynamic local collections'),('LISTENING STATS','stats','Private · stored locally'),('DISCOVERIES','discoveries','Songs saved from radio/discovery'),('DISCOVER','',''),('RADIO','radiohome','Live · podcasts · custom stations')]
+  items += [('PLAYLISTS','playlists','Local cross-source playlists'),('SMART PLAYLISTS','smart','Dynamic local collections'),('STATISTICS','stats','Listening time · charts & rankings · offline'),('DISCOVERIES','discoveries','Songs saved from radio/discovery'),('DISCOVER','',''),('RADIO','radiohome','Live · podcasts · custom stations')]
   if self.cfg.getbool('youtube_enabled',True):items.append(('YOUTUBE · BETA','yt','Audio via yt-dlp'))
   items += [('PLAYBACK','',''),('QUEUE','queue',f'{len(self.queue)} items'),('FAVORITES','fav','Across sources'),('HISTORY','hist','Recently played'),('BOOKMARKS','bookmarks','Saved positions in long-form audio'),('NPLAY','',''),('SETTINGS','settings','Appearance · sources · library'),('ABOUT','about',f'NPLAY {__version__}')]
   ui.show_menu('BROWSE',items)
@@ -81,6 +81,22 @@ class NavigationMixin:
   pos=self.playback_position()
   self.play(t,ui,preserve_context=True,resume_pos=pos if t.seekable else 0)
  def open_source(self,s,ui):
+  if s=='stats:toggle':self.statistics_toggle(ui);return
+  if s=='stats:overview':self.stats_home(ui,getattr(self,'_stats_period','week'),push=False);return
+  if s=='stats:settings':self.stats_settings(ui);return
+  if s in ('stats:artists','stats:albums','stats:tracks','stats:sources'):
+   self.stats_details(ui,s.split(':',1)[1]);return
+  if s=='stats:copy-id':
+   import shutil,subprocess
+   clip=shutil.which('wl-copy') or shutil.which('xclip') or shutil.which('xsel')
+   if not clip:ui.status('Clipboard tool unavailable · install wl-clipboard, xclip or xsel');return
+   try:
+    args=([clip] if clip.endswith('wl-copy') else [clip,'-selection','clipboard'] if clip.endswith('xclip') else [clip,'--clipboard','--input'])
+    subprocess.run(args,input=self.statistics.installation_id(),text=True,timeout=2,check=True)
+    ui.status('Installation ID copied')
+   except (OSError,subprocess.SubprocessError):ui.status('Unable to copy installation ID')
+   return
+  if s.startswith('stats:period:'):self.stats_home(ui,s.rsplit(':',1)[1],push=False);return
   if s=='resume-current':self.play_pause(ui);return
   if s.startswith('source-switch:'):
    src=s.split(':',1)[1];t=getattr(ui,'source_switch_tracks',{}).get(src)

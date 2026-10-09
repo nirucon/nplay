@@ -12,7 +12,7 @@ DATA="${XDG_DATA_HOME:-$HOME/.local/share}/nplay"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/nplay"
 BIN="$HOME/.local/bin"; CFG="${XDG_CONFIG_HOME:-$HOME/.config}/nplay"
 B='\033[1m'; D='\033[2m'; G='\033[32m'; Y='\033[33m'; R='\033[31m'; N='\033[0m'
-printf "${B}NPLAY 1.4.1${N}\n${D}Terminal audio player · installer${N}\n\n"
+printf "${B}NPLAY 1.5.2${N}\n${D}Terminal audio player · installer${N}\n\n"
 if [[ -r /etc/os-release ]]; then . /etc/os-release; else ID=unknown; ID_LIKE=""; fi
 id="${ID:-unknown}"; like=" ${ID_LIKE:-} "
 if [[ "$id" =~ ^(arch|omarchy|cachyos|endeavouros)$ ]] || [[ "$like" == *" arch "* ]]; then

@@ -26,6 +26,6 @@ class CoreTests(unittest.TestCase):
   self.assertTrue(hasattr(spotify_mod,'log'))
   src=inspect.getsource(App.play)
   self.assertNotIn('has_credentials()',src)
-  self.assertIn('start(oauth=False)',src)
+  self.assertIn('ensure_local_device(name,20)',src)
 
 if __name__=='__main__':unittest.main()

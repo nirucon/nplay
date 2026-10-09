@@ -138,6 +138,16 @@ class UI(RenderingMixin):
       if self.mode=='home':self.dirty=True
       else:self.draw_transport_frame()
      if active and now-self.last_checkpoint>=2.0:self.a.checkpoint(self.play_pos,self.a.volume);self.last_checkpoint=now
+    if now-getattr(self,'last_stats_tick',0)>=2.0:
+     self.last_stats_tick=now
+     try:self.a.statistics_tracker.tick(self.a.current,self.a.playback_active())
+     except Exception:pass
+    # Update the currently visible statistics every 10 seconds, without
+    # stacking menus or moving the selection while music continues to play.
+    if self.mode=='menu' and self.title.startswith('STATISTICS') and now-getattr(self,'last_stats_refresh',0)>=10.0:
+     self.last_stats_refresh=now
+     try:self.a.refresh_statistics_view(self)
+     except Exception:pass  # Statistics cannot interrupt the player.
     animated=self.mode=='home' and self.a.current and self.visual
     preview_ready=self.mode in ('list','menu') and self.preview_due and now>=self.preview_due
     if self.dirty or preview_ready:

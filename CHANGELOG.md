@@ -1,4 +1,41 @@
-# 1.4.1 — Custom theme installation UX
+# NPLAY 1.5.2 — Statistics final polish
+
+- Remove repeated period-help text; shorten ranking descriptions.
+- Refresh visible Statistics overview, ranking and settings screens every ten seconds during playback.
+- Preserve current selection and navigation history during automatic refresh.
+- Avoid stacking menus when changing local statistics collection state or using Back to Overview.
+- Document a transport-neutral event adapter contract for independent third-party integrations.
+- No schema migration, no HTTP sync, no playback-engine changes.
+
+# NPLAY 1.5.1 — Statistics UX and stability
+
+- Display actual listening time and ranked listening durations directly in visible menu labels.
+- Separate concise overview from dedicated Artists, Albums, Tracks and Sources rankings.
+- Move local tracking toggle, offline sync status, pending outbox and installation ID into Settings & Sync.
+- Add optional clipboard copy of the installation ID using available Linux clipboard utilities.
+- Change period selection in-place instead of creating repeated navigation stack entries.
+- No database migration, network synchronization, or changes to the playback engine.
+
+# NPLAY 1.5.1 — Offline Statistics
+
+- Separate, modular SQLite statistics with a stable per-installation UUID.
+- Actual active listening intervals for Local, Navidrome, Spotify, YouTube and radio sources.
+- Today, current week, month, year and all-time views in NPLAY TUI.
+- Top artists, albums, tracks and sources ranked by time listened.
+- Local collection toggle; persistent unsent event outbox with idempotent event IDs.
+- No network synchronization until the Statistics API v2 contract is independently verified.
+- Existing player database, playback pipeline, Spotify Connect recovery and themes retained.
+
+# 1.5.1 — Spotify Connect self-recovery
+
+- When a running NPLAY-owned librespot process does not appear in Spotify Connect, restart it once and retry device registration.
+- Re-check visibility under a recovery lock to avoid redundant restarts.
+- 90-second recovery cooldown prevents restart loops on blocked networks or invalid authorization.
+- Reap stopped librespot children (including after SIGKILL fallback) and close parent-side log descriptors.
+- Preserve cached credentials, external Connect mode, playback state and all user data.
+- No automatic restart during successful playback.
+
+# 1.5.1 — Custom theme installation UX
 
 - Replace the technical in-app instructions with a short, actionable three-step guide.
 - Display the actual XDG theme directory in the app.

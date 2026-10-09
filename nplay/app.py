@@ -3,6 +3,7 @@ from pathlib import Path
 from . import __version__
 from .config import Config,STATE
 from .db import DB
+from .statistics import StatisticsStore,ListeningTracker
 from .player import Player
 from .providers import Navidrome,SR,YouTube
 from .spotify import Spotify
@@ -20,7 +21,7 @@ from .navigation import NavigationMixin
 from .core import EventBus,PlaybackState,default_registry,SessionStore,PlaybackController
 class App(NavigationMixin):
  def __init__(self):
-  self.cfg=Config();self.db=DB();self.player=Player(self._on_track_end);self.current=None;self.resume_candidate=False;self.resume_position=0.0;self.volume=100.0;self.queue=[];self.later_queue=[];self.play_context=[];self.original_context=[];self.context_index=-1;self.back_stack=[];self.shuffle_mode=self.cfg.get('shuffle_mode','off');self.repeat_mode=self.cfg.get('repeat_mode','off');self.ui=None;self.sr=SR();self.yt=YouTube();self.spotify=Spotify(self.cfg);self.spotify_state={};self.spotify_polling=False;self.spotify_pending_track_id='';self.spotify_track_generation=0;self.playback_generation=0;self.playback_request=0;self.playback_state={};self.radio_info={};self.artwork_cache=ArtworkCache(int(self.cfg.get('artwork_cache_mb','500') or 500));self.notifier=Notifier(self.cfg,self.artwork_cache);self.mpris=MPRIS(self);self.sleep_deadline=0;self.sleep_mode='off';self.play_event_id=None;self.play_event_started=0.0;self.play_event_listened=0.0;self.play_event_tick=0.0;self.radio_poll_generation=0;self.state_path=STATE/'session.json';self.events=EventBus();self.state=PlaybackState();self.sources=default_registry();self.session=SessionStore(self.state_path);self.playback=PlaybackController(self);self.searcher=SearchCoordinator(self);self.radio_engine=NPlayRadio(self);self.settings=SettingsController(self);self.mpv_start=MpvStartCoordinator(self);self.load_state();self.mpris.start() if self.cfg.getbool('mpris_enabled',True) else None
+  self.cfg=Config();self.db=DB();self.statistics=StatisticsStore();self.statistics_tracker=ListeningTracker(self.statistics,self.cfg.getbool('statistics_enabled',True));self.player=Player(self._on_track_end);self.current=None;self.resume_candidate=False;self.resume_position=0.0;self.volume=100.0;self.queue=[];self.later_queue=[];self.play_context=[];self.original_context=[];self.context_index=-1;self.back_stack=[];self.shuffle_mode=self.cfg.get('shuffle_mode','off');self.repeat_mode=self.cfg.get('repeat_mode','off');self.ui=None;self.sr=SR();self.yt=YouTube();self.spotify=Spotify(self.cfg);self.spotify_state={};self.spotify_polling=False;self.spotify_pending_track_id='';self.spotify_track_generation=0;self.playback_generation=0;self.playback_request=0;self.playback_state={};self.radio_info={};self.artwork_cache=ArtworkCache(int(self.cfg.get('artwork_cache_mb','500') or 500));self.notifier=Notifier(self.cfg,self.artwork_cache);self.mpris=MPRIS(self);self.sleep_deadline=0;self.sleep_mode='off';self.play_event_id=None;self.play_event_started=0.0;self.play_event_listened=0.0;self.play_event_tick=0.0;self.radio_poll_generation=0;self.state_path=STATE/'session.json';self.events=EventBus();self.state=PlaybackState();self.sources=default_registry();self.session=SessionStore(self.state_path);self.playback=PlaybackController(self);self.searcher=SearchCoordinator(self);self.radio_engine=NPlayRadio(self);self.settings=SettingsController(self);self.mpv_start=MpvStartCoordinator(self);self.load_state();self.mpris.start() if self.cfg.getbool('mpris_enabled',True) else None
  def load_state(self):
   try:
    d=self.session.load();from .model import Track
@@ -454,8 +455,7 @@ class App(NavigationMixin):
       # Normal playback never opens OAuth. Let librespot reuse whatever
       # authentication it can actually load; cache-file discovery is diagnostic,
       # not an authoritative authorization gate.
-      self.spotify.local.start(oauth=False)
-      name=self.cfg.get('spotify_local_name','NPLAY') or 'NPLAY';d=self.spotify.wait_for_device(name,20);did=d['id'];self.spotify.activate_device(did)
+      name=self.cfg.get('spotify_local_name','NPLAY') or 'NPLAY';d=self.spotify.ensure_local_device(name,20);did=d['id'];self.spotify.activate_device(did)
       last_error=None
       for delay in (0,.35,.75,1.25):
        if delay:time.sleep(delay)
@@ -547,9 +547,108 @@ class App(NavigationMixin):
   raw=(info.get('song') or info.get('title') or '').strip();artist=(info.get('artist') or '').strip();title=raw or t.title
   if ' - ' in title and not artist:artist,title=title.split(' - ',1)
   ok=self.db.discovery_add(title,artist,t.source,{'station':t.title if t.kind=='radio' else ''});ui and ui.status(('Saved discovery · '+((' · '.join(x for x in (artist,title) if x)))) if ok else 'Discovery unavailable')
- def stats_home(self,ui):
-  st=self.db.listening_stats(7);items=[('LAST 7 DAYS','',''),(f"{st['plays']} STARTED · {st.get('substantial',0)} SUBSTANTIAL · {st.get('completed',0)} COMPLETED",'', f"{st['minutes']//60}h {st['minutes']%60:02d}m actually listened"),('TOP ARTISTS','','')]+[(a,'',f'{n} plays') for a,n in st['artists'][:10]]+[('SOURCES','','')]+[(src.upper(),'',f'{n} plays') for src,n in st['sources']]
-  ui.show_menu('LISTENING STATS',items)
+ def stats_time(self,seconds):
+  seconds=max(0,int(seconds))
+  h,rem=divmod(seconds,3600);m,sec=divmod(rem,60)
+  return f'{h:,}h {m:02d}m' if h else f'{m}m {sec:02d}s'
+ def stats_home(self,ui,period='week',push=True):
+  """Small overview: every number remains visible without selection."""
+  self._stats_period=period
+  periods=[('TODAY','day'),('WEEK','week'),('MONTH','month'),('YEAR','year'),('ALL TIME','all')]
+  if not self.cfg.getbool('statistics_enabled',True):
+   ui.show_menu('STATISTICS',[
+    ('STATISTICS · OFF','','Listening history is preserved'),
+    ('ENABLE LOCAL STATISTICS','stats:toggle','No data is uploaded'),
+    ('SETTINGS & SYNC','stats:settings','Local privacy and installation identity')],push=push)
+   return
+  st=self.statistics.summary(period)
+  total=self.stats_time(st['seconds'])
+  items=[('ACTUAL LISTENING · '+total,'',f"{st['sessions']} sessions · {st['days']} active days"),
+   ('PERIOD · '+period.upper(),'','Select a period below')]
+  items.extend([(('● ' if period==key else '  ')+label,'stats:period:'+key,'') for label,key in periods])
+  items.extend([('','', ''),
+   ('TOP ARTISTS','stats:artists','Open complete ranking')])
+  items.extend([(f'{i}. {name} · {self.stats_time(sec)}','','') for i,(name,sec,plays) in enumerate(st['artists'][:3],1)])
+  items.append(('TOP ALBUMS','stats:albums','Open complete ranking'))
+  items.extend([(f'{i}. {album} · {self.stats_time(sec)}','','') for i,(artist,album,sec,plays) in enumerate(st['albums'][:3],1)])
+  items.append(('TOP TRACKS','stats:tracks','Open complete ranking'))
+  items.extend([(f'{i}. {title} · {self.stats_time(sec)}','','') for i,(artist,title,sec,plays) in enumerate(st['tracks'][:3],1)])
+  items.extend([('SOURCES','stats:sources','Listening time by source'),
+   ('SETTINGS & SYNC','stats:settings','Collection · privacy · offline outbox')])
+  ui.show_menu('STATISTICS · '+period.upper(),items,push=push)
+ def stats_details(self,ui,section,period=None,push=True):
+  period=period or getattr(self,'_stats_period','week')
+  self._stats_period=period
+  st=self.statistics.summary(period)
+  names={'artists':'ARTISTS','albums':'ALBUMS','tracks':'TRACKS','sources':'SOURCES'}
+  if section not in names:return
+  items=[('LISTENED · '+self.stats_time(st['seconds']),'',''),
+         ('RANKED BY ACTUAL LISTENING TIME','','')]
+  rows=st[section]
+  for i,row in enumerate(rows,1):
+   if section=='albums':
+    artist,album,seconds,plays=row
+    label=f'{i:2d}  {album} · {self.stats_time(seconds)}'
+    detail=f'{artist} · {plays} sessions'
+   elif section=='tracks':
+    artist,title,seconds,plays=row
+    label=f'{i:2d}  {title} · {self.stats_time(seconds)}'
+    detail=f'{artist} · {plays} sessions'
+   else:
+    name,seconds,plays=row
+    label=f'{i:2d}  {name} · {self.stats_time(seconds)}'
+    detail=f'{plays} sessions'
+   items.append((label,'',detail))
+  if not rows:items.append(('NO LISTENING DATA YET','','Play some music to build rankings'))
+  items.append(('BACK TO OVERVIEW','stats:overview','Return to statistics'))
+  ui.show_menu('STATISTICS · '+names[section]+' · '+period.upper(),items,push=push)
+ def stats_settings(self,ui,push=True):
+  enabled=self.cfg.getbool('statistics_enabled',True)
+  pending=self.statistics.summary('all')['pending']
+  ui.show_menu('STATISTICS · SETTINGS & SYNC',[
+   ('LOCAL COLLECTION · '+('ON' if enabled else 'OFF'),'stats:toggle','Toggle local listening statistics'),
+   ('PRIVACY · OFFLINE ONLY','','No listening data is uploaded'),
+   ('SYNC · DISABLED','','API v2 contract not verified'),
+   (f'OUTBOX · {pending} PENDING','','Durable local queue · no network transmission'),
+   ('INSTALLATION ID','','Unique per NPLAY data directory'),
+   (self.statistics.installation_id(),'','Copy using the action below'),
+   ('COPY INSTALLATION ID','stats:copy-id','Copy identifier to clipboard if supported'),
+   ('BACK TO OVERVIEW','stats:overview','Return to statistics')],push=push)
+ def refresh_statistics_view(self,ui):
+  """Refresh only an open statistics menu, retaining the user's selection.
+
+  Never touch playback state or navigation history during a refresh.
+  """
+  if ui.mode!='menu' or not ui.title.startswith('STATISTICS'):return False
+  title=ui.title
+  previous=ui.sel
+  action=ui.items[previous][1] if 0<=previous<len(ui.items) and isinstance(ui.items[previous],tuple) else None
+  if title=='STATISTICS · SETTINGS & SYNC':self.stats_settings(ui,push=False)
+  elif title.startswith('STATISTICS · ') and ' · ' in title[len('STATISTICS · '):]:
+   parts=title.split(' · ')
+   section={'ARTISTS':'artists','ALBUMS':'albums','TRACKS':'tracks','SOURCES':'sources'}.get(parts[1])
+   if not section:return False
+   self.stats_details(ui,section,push=False)
+  elif title=='STATISTICS' or title.startswith('STATISTICS · '):
+   self.stats_home(ui,getattr(self,'_stats_period','week'),push=False)
+  else:return False
+  if ui.items:
+   # Prefer the same navigation action, otherwise retain row position.
+   new_index=next((i for i,item in enumerate(ui.items) if action and isinstance(item,tuple) and item[1]==action),None)
+   if new_index is None:new_index=min(previous,len(ui.items)-1)
+   if ui.selectable(new_index):ui.sel=new_index
+   else:
+    ui.sel=new_index
+    ui.edge_selection(False)
+   ui.invalidate()
+  return True
+ def statistics_toggle(self,ui):
+  enabled=not self.cfg.getbool('statistics_enabled',True)
+  self.cfg.set('statistics_enabled','true' if enabled else 'false')
+  self.statistics_tracker.enabled=enabled
+  self.statistics_tracker.reset()
+  self.stats_settings(ui,push=False)
+  ui.status('Local statistics '+('enabled' if enabled else 'disabled')+' · sync disabled')
  def smart_home(self,ui):
   ui.show_menu('SMART PLAYLISTS',[('RECENTLY ADDED','smart:recent','Newest local files'),('MOST PLAYED','smart:most','Based on NPLAY history'),('NEVER PLAYED','smart:never','Local tracks not in history'),('UNPLAYED ALBUMS','smart:albums','Albums with no played tracks'),('HIGHLY RATED','smart:rated','4–5 stars'),('RANDOM 50','local:random:50','Fresh local selection')])
  def sleep_set(self,arg,ui=None):
