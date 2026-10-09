@@ -1,4 +1,4 @@
-"""Offline-only listening statistics and durable, unsent sync outbox."""
+"""Listening statistics and durable, backwards-compatible sync outbox."""
 import os
 from pathlib import Path
 import sqlite3
@@ -45,6 +45,13 @@ class StatisticsStore:
   finally:db.close()
  def installation_id(self):
   with self.lock,self._connect() as db:return db.execute("SELECT value FROM identity WHERE key='installation_id'").fetchone()[0]
+ def get_meta(self,key,default=''):
+  with self.lock,self._connect() as db:
+   row=db.execute('SELECT value FROM identity WHERE key=?',(key,)).fetchone()
+   return row[0] if row else default
+ def set_meta(self,key,value):
+  with self.lock,self._connect() as db:
+   db.execute('INSERT INTO identity(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(key,str(value)))
  def add(self,session_id,start_utc,seconds,track,event_id=None):
   if not 0<seconds<=10:raise ValueError('Invalid listening interval')
   eid=event_id or str(uuid.uuid4())

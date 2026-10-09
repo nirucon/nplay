@@ -81,6 +81,8 @@ class NavigationMixin:
   pos=self.playback_position()
   self.play(t,ui,preserve_context=True,resume_pos=pos if t.seekable else 0)
  def open_source(self,s,ui):
+  if s=='stats:sync-toggle':self.statistics_sync_toggle(ui);return
+  if s=='stats:sync-now':self.statistics_sync_now(ui);return
   if s=='stats:toggle':self.statistics_toggle(ui);return
   if s=='stats:overview':self.stats_home(ui,getattr(self,'_stats_period','week'),push=False);return
   if s=='stats:settings':self.stats_settings(ui);return

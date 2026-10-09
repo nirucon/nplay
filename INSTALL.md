@@ -1,4 +1,4 @@
-# NPLAY 1.5.2 — installation
+# NPLAY 1.5.5 — installation
 
 NPLAY is a custom application made for Nicklas Rudolfsson, but is fully functional for other users.
 
@@ -12,8 +12,8 @@ NPLAY is a custom application made for Nicklas Rudolfsson, but is fully function
 Run:
 
 ```sh
-unzip NPLAY-1.5.2.zip
-cd NPLAY-1.5.2
+unzip NPLAY-1.5.5.zip
+cd NPLAY-1.5.5
 ./install.sh
 ```
 

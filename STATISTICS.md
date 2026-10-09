@@ -1,4 +1,6 @@
-# NPLAY Statistics 1.5.2
+> NPLAY 1.5.5: see [STATISTICS-SYNC-1.5.5.md](STATISTICS-SYNC-1.5.5.md) for the verified website API v3 contract and opt-in HTTPS synchronization. Earlier API v2 discussion below is historical and not the active protocol.
+
+# NPLAY Statistics 1.5.5
 
 ## Architecture
 
@@ -67,11 +69,11 @@ To enable integration, the server must document and confirm:
 
 No changes to existing `nplay/db.py` schema. The new SQLite file is additive and independent. Rollback to NPLAY 1.4.2 leaves the file untouched; upgrading again resumes existing statistics. No automatic migration or deletion of listening data.
 
-## 1.5.2 Statistics TUI
+## 1.5.5 Statistics TUI
 
 Open Browse → Statistics. The overview shows actual listening time, period selectors and three visible entries each for artists, albums and tracks, with durations in the labels (not hidden in selection-only details). Open the individual Top Artists, Top Albums, Top Tracks or Sources menus to view up to ten entries. Settings & Sync contains the local collection toggle, offline-only status, outbox count and installation UUID. Copy Installation ID uses `wl-copy` (Wayland), `xclip` or `xsel` when available. No clipboard dependency is mandatory.
 
-## 1.5.2: provider-independent integration
+## 1.5.5: provider-independent integration
 
 The statistics engine is independent of n.rudolfsson.net and has **no hardcoded server address**. `StatisticsStore.pending_events(limit)` exposes pending immutable event records; `StatisticsStore.acknowledge(event_ids)` is available only for use **after a future verified idempotent server acknowledgment**. See `nplay/statistics/adapter.py` for a transport-neutral canonical envelope. It does not send anything and is not the website's verified API v2 contract.
 

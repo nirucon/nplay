@@ -138,6 +138,10 @@ class UI(RenderingMixin):
       if self.mode=='home':self.dirty=True
       else:self.draw_transport_frame()
      if active and now-self.last_checkpoint>=2.0:self.a.checkpoint(self.play_pos,self.a.volume);self.last_checkpoint=now
+    if now-getattr(self,'last_sync_tick',0)>=60.0:
+     self.last_sync_tick=now
+     try:self.a.statistics_sync.run_async()
+     except Exception:pass
     if now-getattr(self,'last_stats_tick',0)>=2.0:
      self.last_stats_tick=now
      try:self.a.statistics_tracker.tick(self.a.current,self.a.playback_active())

@@ -4,6 +4,7 @@ from . import __version__
 from .config import Config,STATE
 from .db import DB
 from .statistics import StatisticsStore,ListeningTracker
+from .statistics.sync import StatisticsSync,DEFAULT_URL
 from .player import Player
 from .providers import Navidrome,SR,YouTube
 from .spotify import Spotify
@@ -21,7 +22,7 @@ from .navigation import NavigationMixin
 from .core import EventBus,PlaybackState,default_registry,SessionStore,PlaybackController
 class App(NavigationMixin):
  def __init__(self):
-  self.cfg=Config();self.db=DB();self.statistics=StatisticsStore();self.statistics_tracker=ListeningTracker(self.statistics,self.cfg.getbool('statistics_enabled',True));self.player=Player(self._on_track_end);self.current=None;self.resume_candidate=False;self.resume_position=0.0;self.volume=100.0;self.queue=[];self.later_queue=[];self.play_context=[];self.original_context=[];self.context_index=-1;self.back_stack=[];self.shuffle_mode=self.cfg.get('shuffle_mode','off');self.repeat_mode=self.cfg.get('repeat_mode','off');self.ui=None;self.sr=SR();self.yt=YouTube();self.spotify=Spotify(self.cfg);self.spotify_state={};self.spotify_polling=False;self.spotify_pending_track_id='';self.spotify_track_generation=0;self.playback_generation=0;self.playback_request=0;self.playback_state={};self.radio_info={};self.artwork_cache=ArtworkCache(int(self.cfg.get('artwork_cache_mb','500') or 500));self.notifier=Notifier(self.cfg,self.artwork_cache);self.mpris=MPRIS(self);self.sleep_deadline=0;self.sleep_mode='off';self.play_event_id=None;self.play_event_started=0.0;self.play_event_listened=0.0;self.play_event_tick=0.0;self.radio_poll_generation=0;self.state_path=STATE/'session.json';self.events=EventBus();self.state=PlaybackState();self.sources=default_registry();self.session=SessionStore(self.state_path);self.playback=PlaybackController(self);self.searcher=SearchCoordinator(self);self.radio_engine=NPlayRadio(self);self.settings=SettingsController(self);self.mpv_start=MpvStartCoordinator(self);self.load_state();self.mpris.start() if self.cfg.getbool('mpris_enabled',True) else None
+  self.cfg=Config();self.db=DB();self.statistics=StatisticsStore();self.statistics_tracker=ListeningTracker(self.statistics,self.cfg.getbool('statistics_enabled',True));self.statistics_sync=StatisticsSync(self.statistics,self.cfg);self.player=Player(self._on_track_end);self.current=None;self.resume_candidate=False;self.resume_position=0.0;self.volume=100.0;self.queue=[];self.later_queue=[];self.play_context=[];self.original_context=[];self.context_index=-1;self.back_stack=[];self.shuffle_mode=self.cfg.get('shuffle_mode','off');self.repeat_mode=self.cfg.get('repeat_mode','off');self.ui=None;self.sr=SR();self.yt=YouTube();self.spotify=Spotify(self.cfg);self.spotify_state={};self.spotify_polling=False;self.spotify_pending_track_id='';self.spotify_track_generation=0;self.playback_generation=0;self.playback_request=0;self.playback_state={};self.radio_info={};self.artwork_cache=ArtworkCache(int(self.cfg.get('artwork_cache_mb','500') or 500));self.notifier=Notifier(self.cfg,self.artwork_cache);self.mpris=MPRIS(self);self.sleep_deadline=0;self.sleep_mode='off';self.play_event_id=None;self.play_event_started=0.0;self.play_event_listened=0.0;self.play_event_tick=0.0;self.radio_poll_generation=0;self.state_path=STATE/'session.json';self.events=EventBus();self.state=PlaybackState();self.sources=default_registry();self.session=SessionStore(self.state_path);self.playback=PlaybackController(self);self.searcher=SearchCoordinator(self);self.radio_engine=NPlayRadio(self);self.settings=SettingsController(self);self.mpv_start=MpvStartCoordinator(self);self.load_state();self.mpris.start() if self.cfg.getbool('mpris_enabled',True) else None
  def load_state(self):
   try:
    d=self.session.load();from .model import Track
@@ -127,7 +128,9 @@ class App(NavigationMixin):
      return True
     self._spotify_control(ui,'playing',resume_work,lambda _:(self.spotify_state.update(is_playing=True,progress=pos,_seen=time.monotonic()),self._state_changed('PlaybackStatus')))
    return
-  if self.player.active():self.player.toggle();self._state_changed('PlaybackStatus');return
+  if self.player.active():
+   self.statistics_tracker.flush(self.playback_active())
+   self.player.toggle();self._state_changed('PlaybackStatus');return
   if self.current:return self.play(self.current,ui,preserve_context=True,resume_pos=self.resume_position or self.db.resume_get(f'{self.current.source}:{self.current.id}',legacy_id=self.current.id))
   if ui:ui.status('Nothing to resume · browse or search for music')
  def fmt(self,s):s=max(0,int(s or 0));return f'{s//60}:{s%60:02d}'
@@ -156,6 +159,7 @@ class App(NavigationMixin):
   self.playback_state={'generation':self.playback_generation,'source':getattr(t,'source',''),'transport':transport,'state':'starting','track_id':getattr(t,'id',''),'artwork':getattr(t,'cover','')};self.state.update_media(t,transport,self.playback_generation,'loading');self.events.emit('playback-state-changed',state=self.state)
   return self.playback_generation
  def _commit_playback_session(self,t,transport,state='playing'):
+  self.statistics_tracker.flush(self.playback_active())
   self.current=t;self._start_play_event(t);self.playback_state={'generation':self.playback_generation,'source':getattr(t,'source',''),'transport':transport,'state':state,'track_id':getattr(t,'id',''),'artwork':getattr(t,'cover','')};self.state.update_media(t,transport,self.playback_generation,state);self.events.emit('media-changed',track=t,state=self.state)
   self._state_changed('PlaybackStatus','Metadata')
  def _stop_spotify_session(self):
@@ -272,6 +276,7 @@ class App(NavigationMixin):
   try:self.play_event_id=self.db.play_started(t);self.play_event_started=time.monotonic();self.play_event_tick=self.play_event_started;self.play_event_listened=0.0
   except Exception:self.play_event_id=None
  def stop_playback(self,ui=None,reason='stopped'):
+  self.statistics_tracker.flush(self.playback_active())
   # Stop also cancels any in-flight asynchronous source handoff.
   self.playback_request+=1;self._finish_play_event(False);self.spotify_polling=False;self.player.stop()
   if self.current and self.current.source=='spotify':
@@ -604,16 +609,36 @@ class App(NavigationMixin):
   ui.show_menu('STATISTICS · '+names[section]+' · '+period.upper(),items,push=push)
  def stats_settings(self,ui,push=True):
   enabled=self.cfg.getbool('statistics_enabled',True)
+  sync=self.statistics_sync
+  online=sync.enabled()
   pending=self.statistics.summary('all')['pending']
+  last=time.strftime('%Y-%m-%d %H:%M',time.localtime(sync.last_success)) if sync.last_success else 'NEVER'
   ui.show_menu('STATISTICS · SETTINGS & SYNC',[
    ('LOCAL COLLECTION · '+('ON' if enabled else 'OFF'),'stats:toggle','Toggle local listening statistics'),
-   ('PRIVACY · OFFLINE ONLY','','No listening data is uploaded'),
-   ('SYNC · DISABLED','','API v2 contract not verified'),
-   (f'OUTBOX · {pending} PENDING','','Durable local queue · no network transmission'),
+   ('PRIVACY · '+('SYNC ENABLED' if online else 'OFFLINE ONLY'),'','Only listening metadata is sent when enabled'),
+   ('SYNC · '+(sync.status if online else 'DISABLED'),'','Background HTTPS only'),
+   ('SERVER · '+sync.url(),'','HTTPS API endpoint'),
+   (f'OUTBOX · {pending} PENDING','','Existing events are never deleted'),
+   ('LAST SUCCESS · '+last,'','Most recent successful batch in this session'),
+   ('LAST ERROR · '+(sync.last_error or 'NONE'),'','No credentials in diagnostics'),
+   ('MANUAL SYNC NOW','stats:sync-now','Send up to 50 pending events in background'),
+   ('SYNC · '+('DISABLE' if online else 'ENABLE'),'stats:sync-toggle','Explicit opt-in · requires dedicated token'),
    ('INSTALLATION ID','','Unique per NPLAY data directory'),
    (self.statistics.installation_id(),'','Copy using the action below'),
    ('COPY INSTALLATION ID','stats:copy-id','Copy identifier to clipboard if supported'),
    ('BACK TO OVERVIEW','stats:overview','Return to statistics')],push=push)
+ def statistics_sync_toggle(self,ui):
+  new=not self.statistics_sync.enabled()
+  if new and not self.cfg.statistics_token():
+   ui.status('Configure a dedicated token first: nplay --stats-set-token');return
+  self.cfg.set('statistics_sync_enabled','true' if new else 'false')
+  self.statistics_sync.status='IDLE' if new else 'DISABLED'
+  self.stats_settings(ui,push=False)
+ def statistics_sync_now(self,ui):
+  if not self.statistics_sync.enabled():ui.status('Enable sync first in Settings & Sync');return
+  started=self.statistics_sync.run_async(manual=True,callback=lambda:ui.post(lambda:self.refresh_statistics_view(ui)))
+  ui.status('Statistics syncing in background' if started else 'Sync already in progress')
+  self.stats_settings(ui,push=False)
  def refresh_statistics_view(self,ui):
   """Refresh only an open statistics menu, retaining the user's selection.
 
@@ -646,7 +671,7 @@ class App(NavigationMixin):
   enabled=not self.cfg.getbool('statistics_enabled',True)
   self.cfg.set('statistics_enabled','true' if enabled else 'false')
   self.statistics_tracker.enabled=enabled
-  self.statistics_tracker.reset()
+  self.statistics_tracker.flush(self.playback_active())
   self.stats_settings(ui,push=False)
   ui.status('Local statistics '+('enabled' if enabled else 'disabled')+' · sync disabled')
  def smart_home(self,ui):
@@ -712,7 +737,7 @@ class App(NavigationMixin):
 def doctor(a=None):
  a=a or App();print(f'NPLAY {__version__} by Nicklas Rudolfsson');print('python       OK');print('mpv          '+('OK' if shutil.which('mpv') else 'MISSING'));print('yt-dlp       '+((a.yt.version()+' · '+a.yt.binary) if a.yt.available() else 'optional / missing'));print('cava         '+('OK' if shutil.which('cava') else 'optional / missing'));print('mpris        '+('READY' if a.mpris.available else ('enabled / unavailable' if a.cfg.getbool('mpris_enabled',True) else 'off')));print('notifications '+(('ON · '+str(a.notifier.binary)) if a.notifier.enabled() else ('enabled / unavailable' if a.cfg.getbool('track_notifications',True) else 'off')));print('terminal     '+os.getenv('TERM','unknown'));print('kitty        '+('YES' if os.getenv('KITTY_WINDOW_ID') else 'no'));print('library      '+str(a.db.count())+' indexed tracks · schema '+str(a.db.schema_version()));print('navidrome    '+(('enabled / configured' if a.nav_configured() else 'enabled / not configured') if a.cfg.getbool('navidrome_enabled',True) else 'disabled'));print('spotify      '+(('enabled / connected' if a.spotify_configured() else 'enabled / setup required') if a.cfg.getbool('spotify_enabled',False) else 'disabled'));print('librespot     '+(('running' if a.spotify.local.running() else 'available') if a.spotify.local.available() else 'optional / missing'));print('sr           '+('enabled' if a.cfg.getbool('sr_enabled',True) else 'disabled'));print('youtube      '+('enabled' if a.cfg.getbool('youtube_enabled',True) else 'disabled'));print('custom radio '+('enabled' if a.cfg.getbool('custom_radio_enabled',True) else 'disabled'));print('music roots  '+' : '.join(a.roots()));print('config       '+str(a.cfg.path));print('log          '+str(LOG_PATH)+' · '+str(recent_error_count())+' recent warnings/errors');print('mpv log      '+str(STATE/'mpv.log'));return 0 if shutil.which('mpv') else 1
 def main():
- ap=argparse.ArgumentParser(prog='nplay');ap.add_argument('query',nargs='*');ap.add_argument('--version',action='store_true');ap.add_argument('--doctor',action='store_true');ap.add_argument('--scan',action='store_true');ap.add_argument('--list-themes',action='store_true');ap.add_argument('--check-theme',metavar='FILE');args=ap.parse_args()
+ ap=argparse.ArgumentParser(prog='nplay');ap.add_argument('query',nargs='*');ap.add_argument('--version',action='store_true');ap.add_argument('--doctor',action='store_true');ap.add_argument('--scan',action='store_true');ap.add_argument('--list-themes',action='store_true');ap.add_argument('--check-theme',metavar='FILE');ap.add_argument('--stats-set-token',action='store_true');ap.add_argument('--stats-sync-now',action='store_true');args=ap.parse_args()
  if args.version:print(f'NPLAY {__version__}');return
  if args.list_themes:
   from .theme import available
@@ -723,7 +748,18 @@ def main():
   ok,msg=validate_theme(args.check_theme);print(msg)
   if not ok:raise SystemExit(1)
   return
+ if args.stats_set_token:
+  import getpass
+  token=getpass.getpass('Dedicated statistics API token (hidden): ').strip()
+  if not token:raise SystemExit('Cancelled: empty token')
+  Config().save_statistics_token(token)
+  print('Statistics token stored locally (0600). Enable sync separately in NPLAY Settings & Sync.')
+  return
  a=App()
+ if args.stats_sync_now:
+  try:print('Acknowledged:',a.statistics_sync.once())
+  except Exception as e:raise SystemExit('Sync failed: '+str(e))
+  return
  if args.doctor:raise SystemExit(doctor(a))
  if args.scan:r=a.scan();print(f"Scan · {r['checked']} checked · {r['new']} new · {r['updated']} updated · {r['removed']} removed · {r['total']} indexed");return
  if not sys.stdin.isatty() or not sys.stdout.isatty():raise SystemExit('NPLAY needs an interactive terminal.')

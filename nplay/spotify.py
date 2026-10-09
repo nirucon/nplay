@@ -160,6 +160,8 @@ class Spotify:
     except json.JSONDecodeError as e:raise RuntimeError(f'Spotify returned invalid JSON for {method} {path} · HTTP {r.status}') from e
   except urllib.error.HTTPError as e:
    if e.code==429:raise RuntimeError('Spotify rate limit · try again shortly')
+   if e.code==403 and 'Restriction violated' in self._http_error(e):
+    raise RuntimeError('Spotify 403 · playback restricted by Spotify · verify Premium, account/device and Spotify Connect in Diagnostics; retry from Spotify app. This is not a librespot registration timeout')
    raise RuntimeError(f'Spotify {e.code} · {self._http_error(e)}')
  def get(self,p,params=None):return self.request('GET',p,params)
  def put(self,p,params=None,body=None):return self.request('PUT',p,params,body)
@@ -333,7 +335,18 @@ class Spotify:
    body['context_uri']=context_uri
    if t:body['offset']={'uri':(t.meta or {}).get('spotify_uri') or 'spotify:track:'+t.id}
   elif t:body['uris']=[t.meta.get('spotify_uri') or 'spotify:track:'+t.id]
-  return self.put('/me/player/play',{'device_id':device_id} if device_id else None,body or None)
+  try:
+   return self.put('/me/player/play',{'device_id':device_id} if device_id else None,body or None)
+  except RuntimeError as exc:
+   # Context resolution can fail in librespot after reconnect. Retry exactly
+   # once with a plain track URI, never for arbitrary HTTP/network failures.
+   # A second 403 remains an actual Spotify API refusal, not an auth prompt.
+   if context_uri and t and 'Spotify 403' in str(exc):
+    uri=(t.meta or {}).get('spotify_uri') or 'spotify:track:'+t.id
+    if not uri.startswith('spotify:track:'):raise
+    log.warning('Spotify rejected context playback (403); retrying track URI only')
+    return self.put('/me/player/play',{'device_id':device_id} if device_id else None,{'uris':[uri]})
+   raise
  def resume(self,device_id=None):return self.play(device_id=device_id,resume=True)
  def pause(self,device_id=None):return self.put('/me/player/pause',{'device_id':device_id} if device_id else None)
  def next(self,device_id=None):return self.post('/me/player/next',{'device_id':device_id} if device_id else None)

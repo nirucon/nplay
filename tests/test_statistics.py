@@ -28,6 +28,7 @@ class StatisticsTests(unittest.TestCase):
   mono[0]=4;wall[0]+=2;tracker.tick(self.track,False)
   mono[0]=8;wall[0]+=4;tracker.tick(self.track,True)
   mono[0]=10;wall[0]+=2;tracker.tick(self.track,True)
+  tracker.flush(True)
   self.assertEqual(self.store.summary('all')['seconds'],4)
   self.assertEqual(self.store.summary('all')['sessions'],2)
  def test_suspend_gap_ignored(self):

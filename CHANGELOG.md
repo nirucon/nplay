@@ -1,4 +1,23 @@
-# NPLAY 1.5.2 — Statistics final polish
+# NPLAY 1.5.5 — Local playback readiness
+
+- Fix missed `file-loaded` events by reconciling IPC state (`path`, `idle-active`, `core-idle`) after mpv startup.
+- Validate the loaded path matches the requested media before accepting playback.
+- Preserve existing process lifecycle protections, Spotify fallback, statistics and synchronization.
+- Add timeout state diagnostics for unresolved playback failures.
+- No changes to user configuration, tokens, caches, or SQLite databases.
+
+# NPLAY 1.5.5 — Statistics Sync & Optimization
+
+- Verified n.rudolfsson.net 0.6.4 Statistics API v3 contract against the supplied PHP sources.
+- Opt-in HTTPS statistics synchronization, 50-event batches, per-installation token, strict acknowledgment checks, timeout and exponential backoff.
+- Non-blocking background worker, explicit manual sync, secure token entry and persistent last-success timestamp.
+- Reduced new listening events to server-compatible ~5-second chunks; preserves all existing 1.5.2 events and outbox records without destructive migration.
+- Flush on pause/stop/track transition/normal exit, with local-midnight splitting and conservative suspend handling.
+- Statistics Settings & Sync shows server, privacy, state, pending count, errors and installation ID.
+- Improved Spotify 403 restriction diagnostics; avoids unsafe blind retries. Spotify provider restrictions require account/device verification.
+- Installer backs up statistics SQLite; adds Void xbps dependency installation path.
+
+# NPLAY 1.5.5 — Statistics final polish
 
 - Remove repeated period-help text; shorten ranking descriptions.
 - Refresh visible Statistics overview, ranking and settings screens every ten seconds during playback.

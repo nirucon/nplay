@@ -1,4 +1,4 @@
-# Custom themes — NPLAY 1.5.2
+# Custom themes — NPLAY 1.5.5
 
 NPLAY was built primarily for a personal Linux setup. Custom themes let other users customize colors without changing the player or installing Python plugins.
 

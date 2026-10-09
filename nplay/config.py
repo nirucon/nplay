@@ -7,7 +7,7 @@ class Config:
  def __init__(self):
   self.path=CONFIG/'config.ini';self.secret_path=CONFIG/'secrets.ini';self.c=configparser.ConfigParser();self.c.read(self.path);self.s=configparser.ConfigParser();self.s.read(self.secret_path);changed=False
   if 'general' not in self.c:self.c['general']={};changed=True
-  defaults={'statistics_enabled':'true','music_dirs':str(Path.home()/'Music'),'youtube_enabled':'true','navidrome_enabled':'true','navidrome_url':'','navidrome_user':'','navidrome_bitrate':'0','visualizer':'true','visualizer_height':'10','kitty_artwork':'true','now_playing_view':'normal','theme':'niru-noir','sr_enabled':'true','custom_radio_enabled':'true','auto_library_refresh':'true','normalization':'true','normalization_mode':'auto','replaygain_preamp':'0','replaygain_clip':'true','gapless':'false','shuffle_mode':'off','repeat_mode':'off','youtube_sort':'relevance','spotify_enabled':'false','spotify_client_id':'','spotify_device_id':'','spotify_device_name':'','spotify_playback':'local','spotify_local_name':'NPLAY','spotify_local_backend':'pulseaudio','spotify_local_bitrate':'320','spotify_local_volume':'70','music_excludes':'Reaper-projects','library_scan_batch':'250','track_notifications':'true','notification_artwork':'true','mpris_enabled':'true','preferred_source':'local','visualizer_style':'classic','visualizer_gradient':'theme'}
+  defaults={'statistics_enabled':'true','statistics_sync_enabled':'false','statistics_sync_url':'https://n.rudolfsson.net/?r=api&endpoint=statistics/music/v3','music_dirs':str(Path.home()/'Music'),'youtube_enabled':'true','navidrome_enabled':'true','navidrome_url':'','navidrome_user':'','navidrome_bitrate':'0','visualizer':'true','visualizer_height':'10','kitty_artwork':'true','now_playing_view':'normal','theme':'niru-noir','sr_enabled':'true','custom_radio_enabled':'true','auto_library_refresh':'true','normalization':'true','normalization_mode':'auto','replaygain_preamp':'0','replaygain_clip':'true','gapless':'false','shuffle_mode':'off','repeat_mode':'off','youtube_sort':'relevance','spotify_enabled':'false','spotify_client_id':'','spotify_device_id':'','spotify_device_name':'','spotify_playback':'local','spotify_local_name':'NPLAY','spotify_local_backend':'pulseaudio','spotify_local_bitrate':'320','spotify_local_volume':'70','music_excludes':'Reaper-projects','library_scan_batch':'250','track_notifications':'true','notification_artwork':'true','mpris_enabled':'true','preferred_source':'local','visualizer_style':'classic','visualizer_gradient':'theme'}
   for k,v in defaults.items():
    if k not in self.c['general']:self.c['general'][k]=v;changed=True
   if 'keys' not in self.c:self.c['keys']=DEFAULT_KEYS;changed=True
@@ -30,6 +30,15 @@ class Config:
    with self.secret_path.open('w') as f:self.s.write(f)
    os.chmod(self.secret_path,0o600)
 
+ def statistics_token(self):
+  return self.s.get('statistics','token',fallback='')
+ def save_statistics_token(self,token):
+  if not token or '\n' in token or '\r' in token or len(token)>1024:raise ValueError('Invalid token')
+  if 'statistics' not in self.s:self.s['statistics']={}
+  self.s['statistics']['token']=token
+  fd=os.open(self.secret_path,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+  with os.fdopen(fd,'w') as f:self.s.write(f)
+  os.chmod(self.secret_path,0o600)
  def spotify_tokens(self):
   return dict(self.s['spotify']) if 'spotify' in self.s else {}
  def save_spotify_tokens(self,tokens):

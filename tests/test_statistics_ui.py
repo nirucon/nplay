@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from nplay.statistics import StatisticsStore
 from nplay.app import App
+from nplay.statistics.sync import StatisticsSync
 
 class FakeUI:
  def __init__(self):self.title='';self.items=[];self.push=None;self.message=''
@@ -22,6 +23,9 @@ class StatisticsUITests(unittest.TestCase):
   self.app=App.__new__(App)
   self.app.statistics=StatisticsStore(Path(self.tmp.name)/'stats.db')
   self.app.cfg=FakeConfig()
+  self.app.cfg.statistics_token=lambda: "test-token"
+  self.app.cfg.get=lambda k,d="": d
+  self.app.statistics_sync=StatisticsSync(self.app.statistics,self.app.cfg)
   self.app.statistics_tracker=SimpleNamespace(enabled=True,reset=lambda:None)
   self.ui=FakeUI()
   track=SimpleNamespace(source='navidrome',id='1',title='Havenless',artist='Enslaved',album='Below the Lights')
