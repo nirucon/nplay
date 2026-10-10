@@ -1,4 +1,4 @@
-import curses,queue,time,shutil,sys,platform,os
+import curses,queue,time,shutil,sys,platform,os,unicodedata
 from .visualizer import Visualizer
 from .artwork import Artwork
 from .ui_render import RenderingMixin
@@ -6,6 +6,14 @@ from .ui_common import ACTIONS,clip
 from .theme import apply as apply_theme, available as available_themes
 from . import __version__
 
+
+
+def _cell_width(text):
+ """Terminal columns occupied by text (including combining marks)."""
+ return sum(0 if unicodedata.combining(ch) or unicodedata.category(ch) in ('Cf', 'Mn', 'Me') else 2 if unicodedata.east_asian_width(ch) in ('W', 'F') else 1 for ch in text)
+
+def _printable_input(key):
+ return isinstance(key, str) and key.isprintable() and key not in ('\x1b', '\t', '\r', '\n')
 
 
 class UI(RenderingMixin):
@@ -176,18 +184,18 @@ class UI(RenderingMixin):
    return []
   try:
    while True:
-    st.move(h-2,0);st.clrtoeol();st.addnstr(h-2,2,label,w-4,curses.A_BOLD);x=min(2+len(label),w-3);shown='•'*len(buf) if secret else ''.join(buf);st.addnstr(h-2,x,shown,max(1,w-x-2))
+    st.move(h-2,0);st.clrtoeol();st.addnstr(h-2,2,label,w-4,curses.A_BOLD);x=min(2+_cell_width(label),w-3);shown='•'*len(buf) if secret else ''.join(buf);st.addnstr(h-2,x,shown,max(1,w-x-2))
     if complete and not secret:
      ss=suggestions(''.join(buf));hint=('  ['+' · '.join(ss[:4])+']') if ss else ''
      if hint:st.addnstr(h-1,2,hint,w-4,self.dim_attr())
-    st.move(h-2,min(w-2,x+pos));st.refresh();k=st.getch()
-    if k==27:return None
-    if k in (10,13,curses.KEY_ENTER):
+    st.move(h-2,min(w-2,x+_cell_width("•"*pos if secret else "".join(buf[:pos]))));st.refresh();k=st.get_wch()
+    if k in (27, '\x1b'):return None
+    if k in (10,13,'\n','\r',curses.KEY_ENTER):
      out=''.join(buf).strip()
      if complete and out:
       self.command_history=[x for x in self.command_history if x!=out]+[out];self.command_history=self.command_history[-50:]
      return out
-    if k in (curses.KEY_BACKSPACE,127,8):
+    if k in (curses.KEY_BACKSPACE,127,8,'\x7f','\b'):
      if pos>0:buf.pop(pos-1);pos-=1
     elif k==curses.KEY_DC:
      if pos<len(buf):buf.pop(pos)
@@ -197,11 +205,11 @@ class UI(RenderingMixin):
      histpos=max(0,histpos-1);buf=list(self.command_history[histpos]);pos=len(buf)
     elif complete and k==curses.KEY_DOWN and self.command_history:
      histpos=min(len(self.command_history),histpos+1);buf=list(self.command_history[histpos]) if histpos<len(self.command_history) else [];pos=len(buf)
-    elif complete and k==9:
+    elif complete and k in (9,'\t'):
      ss=suggestions(''.join(buf))
      if ss:
       current=''.join(buf);matches=ss if ss!=matches else matches;match_i=(match_i+1)%len(matches) if current in matches else 0;buf=list(matches[match_i]);pos=len(buf)
-    elif 32<=k<=126 and len(buf)<max(1,w-x-3):buf.insert(pos,chr(k));pos+=1
+    elif _printable_input(k) and _cell_width(''.join(buf)+k)<=max(1,w-x-3):buf.insert(pos,k);pos+=1
   finally:
    curses.curs_set(0);st.timeout(25);st.move(h-1,0);st.clrtoeol();self.invalidate()
  def theme_label(self):
