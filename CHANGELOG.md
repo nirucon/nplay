@@ -1,3 +1,9 @@
+# NPLAY 1.5.6 — Unicode prompt input
+
+- Use curses wide-character input in interactive prompts (å, ä, ö and other Unicode).
+- Preserve command history, completion, editing and terminal-width-aware cursor placement.
+- No changes to playback, configuration, statistics or persistent data.
+
 # NPLAY 1.5.5 — Local playback readiness
 
 - Fix missed `file-loaded` events by reconciling IPC state (`path`, `idle-active`, `core-idle`) after mpv startup.
