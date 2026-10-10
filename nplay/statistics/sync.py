@@ -30,7 +30,7 @@ class StatisticsSync:
   raw=json.dumps(payload,ensure_ascii=False,separators=(',',':')).encode('utf-8')
   if len(raw)>262144:raise SyncError('Batch exceeds server payload limit')
   req=urllib.request.Request(url,data=raw,method='POST',headers={
-   'Authorization':'Bearer '+token,'Content-Type':'application/json','Accept':'application/json','User-Agent':'NPLAY statistics/1.5.5'})
+   'Authorization':'Bearer '+token,'Content-Type':'application/json','Accept':'application/json','User-Agent':'NPLAY statistics/1.5.6'})
   class NoRedirect(urllib.request.HTTPRedirectHandler):
    def redirect_request(self,*args,**kwargs):raise SyncError('Unexpected redirect; token not forwarded')
   opener=urllib.request.build_opener(NoRedirect())
