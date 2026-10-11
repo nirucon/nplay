@@ -33,15 +33,16 @@ class Player:
   while time.monotonic()<deadline:
    if self.ready.wait(.05):return True
    if self.failed.is_set() or proc.poll() is not None:break
-   # file-loaded is an edge-triggered event. Fast local files may finish
-   # loading before the event reader connects. Reconcile with mpv state.
+   # file-loaded is edge-triggered; reconcile if the event was missed.
+   # core-idle may remain true while --pause=yes is in effect, so it
+   # cannot be required before the coordinator unpauses playback.
    if time.monotonic()>=next_probe:
     next_probe=time.monotonic()+.25
     status=self._playback_status(sock)
     if status is not None:
      last_status=status
      path,idle,core_idle=status
-     if path==url and idle is False and core_idle is False:
+     if path==url and idle is False:
       log.info('mpv ready via IPC state pid=%s gen=%s path=%r idle=%r core_idle=%r',proc.pid,gen,path,idle,core_idle)
       self.ready.set();return True
   if last_status is not None:log.warning('mpv readiness timeout pid=%s gen=%s expected=%r status=%r',proc.pid,gen,url,last_status)
