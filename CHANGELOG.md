@@ -1,3 +1,11 @@
+# NPLAY 1.5.8 — mpv readiness stabilization
+
+- Accept a correctly loaded, non-idle mpv track while the player is intentionally paused before UI commit.
+- Preserve per-generation IPC isolation and exact loaded-path verification across source handoffs.
+- Align installer and installation documentation version with the application.
+- Debian verified: local playback and Local ↔ Navidrome switching. Spotify handoff awaits Omarchy testing.
+- No database, configuration, or credential migrations.
+
 # NPLAY 1.5.6 — Unicode prompt input
 
 - Use curses wide-character input in interactive prompts (å, ä, ö and other Unicode).
