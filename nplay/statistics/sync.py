@@ -30,7 +30,7 @@ class StatisticsSync:
   raw=json.dumps(payload,ensure_ascii=False,separators=(',',':')).encode('utf-8')
   if len(raw)>262144:raise SyncError('Batch exceeds server payload limit')
   req=urllib.request.Request(url,data=raw,method='POST',headers={
-   'Authorization':'Bearer '+token,'Content-Type':'application/json','Accept':'application/json','User-Agent':'NPLAY statistics/1.5.6'})
+   'Authorization':'Bearer '+token,'Content-Type':'application/json','Accept':'application/json','User-Agent':'NPLAY statistics/1.5.7'})
   class NoRedirect(urllib.request.HTTPRedirectHandler):
    def redirect_request(self,*args,**kwargs):raise SyncError('Unexpected redirect; token not forwarded')
   opener=urllib.request.build_opener(NoRedirect())
@@ -51,6 +51,9 @@ class StatisticsSync:
   if not payload['events']:self.status='IDLE';return 0
   if any(not 0<float(x['listened_seconds'])<=5.5 for x in payload['events']):
    self._failed('Legacy interval exceeds server maximum; preserved locally',retry=False)
+   raise SyncError(self.last_error)
+  if any(not 1577836800<=float(x['started_at_utc'])<=self.clock()+300 for x in payload['events']):
+   self._failed('Invalid listening timestamp in outbox; preserved locally',retry=False)
    raise SyncError(self.last_error)
   ids={x['event_id'] for x in payload['events']}
   self.status='SYNCING'
