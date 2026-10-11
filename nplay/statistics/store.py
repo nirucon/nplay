@@ -1,5 +1,6 @@
 """Listening statistics and durable, backwards-compatible sync outbox."""
 import os
+import math
 from pathlib import Path
 import sqlite3
 from contextlib import contextmanager
@@ -53,7 +54,15 @@ class StatisticsStore:
   with self.lock,self._connect() as db:
    db.execute('INSERT INTO identity(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(key,str(value)))
  def add(self,session_id,start_utc,seconds,track,event_id=None):
-  if not 0<seconds<=10:raise ValueError('Invalid listening interval')
+  if not math.isfinite(float(seconds)) or not 0<float(seconds)<=10:raise ValueError('Invalid listening interval')
+  # Playback may briefly report a zero/uninitialized start timestamp.
+  # Use the actual wall clock rather than persisting an unsyncable 1970 event.
+  start_utc=float(start_utc)
+  now=time.time()
+  if not math.isfinite(start_utc) or start_utc<=0:
+   start_utc=now
+  elif start_utc>now+300:
+   raise ValueError('Listening timestamp is in the future')
   eid=event_id or str(uuid.uuid4())
   source=str(getattr(track,'source','') or 'unknown')[:40]
   tid=str(getattr(track,'id','') or '')[:512]
