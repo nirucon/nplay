@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.coverage.*
+*.egg-info/
+.venv/
+venv/
+install.sh.local-backup
