@@ -52,7 +52,7 @@ class StatisticsSync:
   if any(not 0<float(x['listened_seconds'])<=5.5 for x in payload['events']):
    self._failed('Legacy interval exceeds server maximum; preserved locally',retry=False)
    raise SyncError(self.last_error)
-  if any(not 1577836800<=float(x['started_at_utc'])<=self.clock()+300 for x in payload['events']):
+  if any(not 1577836800<=datetime.fromisoformat(x['started_at'].replace('Z','+00:00')).timestamp()<=self.clock()+300 for x in payload['events']):
    self._failed('Invalid listening timestamp in outbox; preserved locally',retry=False)
    raise SyncError(self.last_error)
   ids={x['event_id'] for x in payload['events']}
