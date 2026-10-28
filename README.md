@@ -48,7 +48,7 @@ See [STATISTICS.md](STATISTICS.md) for setup, server requirements and privacy sa
 
 ## Status
 
-Current release: **1.5.8**, focused on mpv playback-startup reliability (including paused local tracks) and Unicode input in prompts. No configuration, credential or database migrations in recent releases. See [CHANGELOG.md](CHANGELOG.md).
+Current release: **1.5.9**, focused on Spotify browser launch reliability on minimal X11 sessions, plus the 1.5.8 mpv playback-startup and Unicode prompt fixes. No configuration, credential or database migrations in recent releases. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 

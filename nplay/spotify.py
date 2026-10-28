@@ -5,7 +5,7 @@ provided by a managed librespot process; external Spotify Connect devices remain
 """
 from __future__ import annotations
 from . import __version__
-import base64, hashlib, json, os, secrets, time, urllib.parse, urllib.request, urllib.error, webbrowser, subprocess, shutil, signal, threading
+import base64, configparser, hashlib, json, os, secrets, shlex, time, urllib.parse, urllib.request, urllib.error, webbrowser, subprocess, shutil, signal, threading
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from .model import Track
@@ -21,6 +21,87 @@ SCOPES=' '.join([
  'user-read-recently-played','user-top-read','user-library-read','user-library-modify',
  'playlist-read-private','playlist-read-collaborative','playlist-modify-private','playlist-modify-public'
 ])
+
+def _desktop_browser_command(desktop_id):
+ """Resolve a .desktop file to an argv list with a {url} placeholder."""
+ if not desktop_id:return None
+ roots=[Path.home()/'.local/share/applications','/usr/local/share/applications','/usr/share/applications']
+ roots += [Path(p)/'applications' for p in os.environ.get('XDG_DATA_DIRS','/usr/local/share:/usr/share').split(':') if p]
+ seen=set()
+ for root in roots:
+  path=(root/desktop_id) if not str(desktop_id).startswith('/') else Path(desktop_id)
+  if path in seen or not path.is_file():continue
+  seen.add(path)
+  parser=configparser.ConfigParser(interpolation=None,strict=False)
+  try:parser.read(path)
+  except Exception:continue
+  exec_line=parser.get('Desktop Entry','Exec',fallback='').strip()
+  if not exec_line:continue
+  try:cmd=shlex.split(exec_line)
+  except ValueError:continue
+  if not cmd:continue
+  has_url=False;out=[]
+  for arg in cmd:
+   if arg in ('%u','%U','%f','%F'):
+    out.append('{url}');has_url=True
+   elif arg in ('%i','%c','%k'):
+    continue
+   elif any(code in arg for code in ('%u','%U','%f','%F')):
+    out.append(arg.replace('%u','{url}').replace('%U','{url}').replace('%f','{url}').replace('%F','{url}'));has_url=True
+   else:
+    out.append(arg.replace('%%','%'))
+  if not has_url:out.append('{url}')
+  return out
+ return None
+
+def _browser_commands(url):
+ """Build browser launch candidates in preference order, without launching."""
+ candidates=[];seen=set()
+ def add(cmd,kind=''):
+  if not cmd:return
+  key=tuple(cmd)
+  if key not in seen:seen.add(key);candidates.append((cmd,kind))
+ configured=os.environ.get('BROWSER','').strip()
+ if configured:
+  for entry in configured.split(':'):
+   try:cmd=shlex.split(entry)
+   except ValueError:continue
+   if not cmd:continue
+   if any('%s' in x for x in cmd):cmd=[x.replace('%s','{url}') for x in cmd]
+   else:cmd=cmd+['{url}']
+   add(cmd,'BROWSER')
+ for tool,args in (('xdg-settings',['get','default-web-browser']),('xdg-mime',['query','default','x-scheme-handler/https'])):
+  exe=shutil.which(tool)
+  if not exe:continue
+  try:
+   result=subprocess.run([exe]+args,text=True,capture_output=True,timeout=3)
+   desktop=result.stdout.strip().splitlines()[0] if result.stdout.strip() else ''
+  except Exception:desktop=''
+  cmd=_desktop_browser_command(desktop)
+  if cmd:add(cmd,'desktop')
+ for name in ('helium','firefox','firefox-esr','chromium','chromium-browser','google-chrome','google-chrome-stable','brave-browser','brave','microsoft-edge','microsoft-edge-stable','vivaldi','opera','qutebrowser','epiphany','falkon','konqueror'):
+  exe=shutil.which(name)
+  if exe:add([exe,'{url}'],'known')
+ for tool,args in (('xdg-open',[]),('gio',['open'])):
+  exe=shutil.which(tool)
+  if exe:add([exe]+args+['{url}'],'fallback')
+ return [([x.replace('{url}',url) for x in cmd],kind) for cmd,kind in candidates]
+
+def _open_authorization_url(url):
+ """Open the Spotify consent URL with the system or a common browser."""
+ for command,kind in _browser_commands(url):
+  try:
+   subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+   log.info('Spotify authorization browser candidate tried: %s (%s)',command[0],kind)
+   return True
+  except OSError as e:log.warning('Could not open Spotify browser %s: %s',command[0],e)
+ try:
+  opened=webbrowser.open(url)
+  log.info('Spotify authorization webbrowser fallback returned %s',opened)
+  return bool(opened)
+ except Exception as e:
+  log.warning('Spotify authorization browser fallback failed: %s',e)
+  return False
 
 def _image(x):
  imgs=(x or {}).get('images') or []
@@ -182,7 +263,8 @@ class Spotify:
   server=HTTPServer(('127.0.0.1',43821),Handler);server.timeout=1
   redirect='http://127.0.0.1:43821/callback'
   url=AUTH+'?'+urllib.parse.urlencode({'client_id':cid,'response_type':'code','redirect_uri':redirect,'scope':SCOPES,'state':state,'code_challenge_method':'S256','code_challenge':challenge})
-  if open_browser:webbrowser.open(url)
+  if open_browser and not _open_authorization_url(url):
+   raise RuntimeError('Spotify authorization URL could not be opened in a browser. Open this URL manually: '+url)
   deadline=time.time()+timeout
   while time.time()<deadline and not result:server.handle_request()
   server.server_close()

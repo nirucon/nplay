@@ -1,3 +1,13 @@
+# NPLAY 1.5.9 — Spotify browser launch reliability
+
+- Resolve the system default browser from `$BROWSER`, XDG desktop settings/mime
+  associations, or common installed browsers before falling back to xdg-open.
+- Support .desktop Exec field codes and browser names with arguments.
+- Open Helium/other browsers directly on minimal X11 sessions where xdg-open
+  cannot find an unregistered generic browser.
+- Keep PKCE state validation and the loopback callback unchanged.
+- Report a manual authorization URL if no browser can be launched.
+
 # NPLAY 1.5.8 — mpv readiness stabilization
 
 - Accept a correctly loaded, non-idle mpv track while the player is intentionally paused before UI commit.

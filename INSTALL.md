@@ -1,4 +1,4 @@
-# NPLAY 1.5.8 — installation
+# NPLAY 1.5.9 — installation
 
 NPLAY is a custom application made for Nicklas Rudolfsson, but is fully functional for other users.
 
