@@ -1,3 +1,20 @@
+# NPLAY 1.6.0 — stability and Spotify resilience
+
+- Add automatic external Spotify Connect fallback when `spotify_playback=local`
+  but librespot is not installed; the saved preference is not changed.
+- Make the local-librespot error actionable when no external device is available.
+- Always close the Spotify OAuth loopback server, including browser-open failures
+  and callback interruptions; report a busy callback port clearly.
+- Accept OAuth callbacks only on the registered `/callback` path and separate
+  timeout, state-mismatch, denial and missing-code errors.
+- Add browser resolver and OAuth lifecycle regression tests for `$BROWSER`,
+  `.desktop` Exec field codes, direct launch and failure cleanup.
+- Report MPRIS accurately when another NPLAY instance already owns the D-Bus
+  name, and wait briefly for the MPRIS worker instead of racing it.
+- Make all statistics test fixtures relative and add a versioned statistics
+  User-Agent assertion; the full test suite is green again.
+- No configuration, credential or database migrations.
+
 # NPLAY 1.5.9 — Spotify browser launch reliability
 
 - Resolve the system default browser from `$BROWSER`, XDG desktop settings/mime

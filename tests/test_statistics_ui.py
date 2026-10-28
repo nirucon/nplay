@@ -1,10 +1,13 @@
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from nplay.statistics import StatisticsStore
 from nplay.app import App
 from nplay.statistics.sync import StatisticsSync
+
+NOW=int(time.time())
 
 class FakeUI:
  def __init__(self):self.title='';self.items=[];self.push=None;self.message=''
@@ -29,7 +32,7 @@ class StatisticsUITests(unittest.TestCase):
   self.app.statistics_tracker=SimpleNamespace(enabled=True,reset=lambda:None)
   self.ui=FakeUI()
   track=SimpleNamespace(source='navidrome',id='1',title='Havenless',artist='Enslaved',album='Below the Lights')
-  self.app.statistics.add('session',1800000000,3,track)
+  self.app.statistics.add('session',NOW,3,track)
  def tearDown(self):self.tmp.cleanup()
  def test_overview_exposes_time_and_rankings_without_selection(self):
   self.app.stats_home(self.ui,'all')

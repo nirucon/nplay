@@ -149,7 +149,7 @@ class LocalSpotifyEngine:
  def _start_locked(self,oauth=False):
   if self.running():return True
   b=self.binary()
-  if not b:raise RuntimeError('librespot is not installed · use Spotify → Local playback for setup')
+  if not b:raise RuntimeError('librespot is not installed · install it for local playback, or use an external Spotify Connect device')
   bitrate=self.cfg.get('spotify_local_bitrate','320') or '320';name=self.cfg.get('spotify_local_name','NPLAY') or 'NPLAY'
   backend=self.cfg.get('spotify_local_backend','pulseaudio') or 'pulseaudio'
   args=[b,'--name',name,'--device-type','computer','--bitrate',bitrate,'--cache',str(self.cache),'--system-cache',str(self.system_cache),'--backend',backend,'--initial-volume',str(int(float(self.cfg.get('spotify_local_volume','70') or 70))),'--quiet']
@@ -256,22 +256,36 @@ class Spotify:
   state=secrets.token_urlsafe(24);result={}
   class Handler(BaseHTTPRequestHandler):
    def do_GET(s):
+    # Only the registered loopback callback may mutate the authorization result.
+    # Browsers routinely request /favicon.ico; that must never alter OAuth state.
+    if urllib.parse.urlparse(s.path).path!='/callback':
+     b=b'Not found';s.send_response(404);s.send_header('Content-Type','text/plain; charset=utf-8');s.send_header('Content-Length',str(len(b)));s.end_headers();s.wfile.write(b);return
     q=urllib.parse.parse_qs(urllib.parse.urlparse(s.path).query);result.update({k:v[0] for k,v in q.items()})
     msg='NPLAY Spotify connected. You can close this tab and return to the terminal.' if q.get('code') else 'NPLAY Spotify authorization was not completed.'
     b=('<html><body style="background:#111;color:#eee;font:16px sans-serif;padding:3rem"><h2>'+msg+'</h2></body></html>').encode();s.send_response(200);s.send_header('Content-Type','text/html; charset=utf-8');s.send_header('Content-Length',str(len(b)));s.end_headers();s.wfile.write(b)
    def log_message(self,*a):pass
-  server=HTTPServer(('127.0.0.1',43821),Handler);server.timeout=1
+  try:
+   server=HTTPServer(('127.0.0.1',43821),Handler)
+  except OSError as e:
+   raise RuntimeError(f'Spotify callback port 43821 is unavailable · {e}') from e
+  server.timeout=1
   redirect='http://127.0.0.1:43821/callback'
   url=AUTH+'?'+urllib.parse.urlencode({'client_id':cid,'response_type':'code','redirect_uri':redirect,'scope':SCOPES,'state':state,'code_challenge_method':'S256','code_challenge':challenge})
-  if open_browser and not _open_authorization_url(url):
-   raise RuntimeError('Spotify authorization URL could not be opened in a browser. Open this URL manually: '+url)
-  deadline=time.time()+timeout
-  while time.time()<deadline and not result:server.handle_request()
-  server.server_close()
-  if result.get('state')!=state:raise RuntimeError('Spotify authorization state mismatch or timeout')
+  try:
+   if open_browser and not _open_authorization_url(url):
+    raise RuntimeError('Spotify authorization URL could not be opened in a browser. Open this URL manually: '+url)
+   deadline=time.time()+timeout
+   while time.time()<deadline and not result:server.handle_request()
+  finally:
+   # Always release the registered loopback port, including browser-open
+   # failures and interrupted callbacks. Otherwise a retry can fail with
+   # EADDRINUSE until the Python object is garbage-collected.
+   server.server_close()
+  if not result:raise RuntimeError(f'Spotify authorization timed out after {timeout}s · retry and complete authorization in the browser')
+  if result.get('state')!=state:raise RuntimeError('Spotify authorization state mismatch · retry and complete authorization in the browser')
   if result.get('error'):raise RuntimeError('Spotify authorization denied · '+result['error'])
   code=result.get('code')
-  if not code:raise RuntimeError('Spotify authorization timed out')
+  if not code:raise RuntimeError('Spotify authorization returned no code · retry authorization')
   data=urllib.parse.urlencode({'client_id':cid,'grant_type':'authorization_code','code':code,'redirect_uri':redirect,'code_verifier':verifier}).encode()
   req=urllib.request.Request(TOKEN,data=data,headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':f'NPLAY/{__version__}'})
   try:

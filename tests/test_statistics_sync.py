@@ -1,8 +1,11 @@
-import tempfile, unittest, io, urllib.error
+import tempfile, unittest, io, urllib.error, time
 from pathlib import Path
 from types import SimpleNamespace
 from nplay.statistics import StatisticsStore, ListeningTracker
 from nplay.statistics.sync import StatisticsSync, SyncError
+
+# Keep fixtures in the past even when a test adds hundreds of sequential events.
+NOW=int(time.time())-86400
 
 class Cfg:
  def __init__(self):self.enabled=True;self.key='dummy'
@@ -14,7 +17,7 @@ class SyncTests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.store=StatisticsStore(Path(self.tmp.name)/'statistics.sqlite3')
   self.cfg=Cfg();self.track=SimpleNamespace(source='navidrome',id='id',title='Song',artist='Artist',album='Album')
-  for i in range(5):self.store.add('session',1800000000+i*2,2,self.track)
+  for i in range(5):self.store.add('session',NOW+i*2,2,self.track)
  def tearDown(self):self.tmp.cleanup()
  def sync(self,transport):return StatisticsSync(self.store,self.cfg,transport=transport)
  def test_complete_ack(self):
@@ -52,7 +55,7 @@ class SyncTests(unittest.TestCase):
   sync=self.sync(lambda *args:self.fail('must not send'))
   with self.assertRaisesRegex(SyncError,'HTTPS'):sync.once()
  def test_batch_max_50_and_existing_db(self):
-  for i in range(60):self.store.add('session',1800000010+i*2,2,self.track)
+  for i in range(60):self.store.add('session',NOW+10+i*2,2,self.track)
   sync=self.sync(lambda u,t,p:{'ok':True,'format_version':1,'acknowledged_event_ids':[e['event_id'] for e in p['events']]})
   identity=self.store.installation_id()
   self.assertEqual(sync.once(),50)
@@ -63,7 +66,7 @@ class SyncTests(unittest.TestCase):
   with self.assertRaisesRegex(SyncError,'storage'):sync.once()
   self.assertEqual(self.store.summary('all')['pending'],5)
  def test_legacy_oversized_event_not_deleted(self):
-  self.store.add('legacy',1800000000,9,self.track)
+  self.store.add('legacy',NOW,9,self.track)
   # Sorted by start_utc; invalid record included in first batch.
   sync=self.sync(lambda *args:self.fail('must not send'))
   with self.assertRaisesRegex(SyncError,'Legacy interval'):sync.once()
@@ -73,7 +76,7 @@ class AggregationTests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.store=StatisticsStore(Path(self.tmp.name)/'statistics.sqlite3')
   self.t=SimpleNamespace(source='spotify',id='track',title='Track',artist='Artist',album='Album')
-  self.mon=[0.];self.wall=[1800000000.]
+  self.mon=[0.];self.wall=[float(NOW)]
   self.tr=ListeningTracker(self.store,clock=lambda:self.mon[0],wall=lambda:self.wall[0])
  def tearDown(self):self.tmp.cleanup()
  def step(self,n):self.mon[0]+=n;self.wall[0]+=n;self.tr.tick(self.t,True)
@@ -125,7 +128,7 @@ class BoundaryTests(unittest.TestCase):
    store=StatisticsStore(path)
    identity=store.installation_id()
    t=SimpleNamespace(source='spotify',id='track',title='Song',artist='Band',album='Album')
-   for i in range(700):store.add('legacy-session',1800000000+i*2,2,t)
+   for i in range(700):store.add('legacy-session',NOW+i*2,2,t)
    reopened=StatisticsStore(path)
    self.assertEqual(reopened.installation_id(),identity)
    self.assertEqual(reopened.summary('all')['pending'],700)
@@ -145,10 +148,12 @@ class TransportTests(unittest.TestCase):
    def read(self,n):return b'{"ok":true,"format_version":1,"acknowledged_event_ids":[]}'
   class Opener:
    def open(self,request,timeout):
+    from nplay import __version__
     self_req=request
     assert self_req.full_url=='https://example.test/api'
     assert timeout==12
     assert self_req.get_header('Authorization')=='Bearer dummy'
+    assert self_req.get_header('User-agent')==f'NPLAY statistics/{__version__}'
     assert json.loads(self_req.data)['installation_id']=='00000000-0000-0000-0000-000000000000'
     return Response()
   with tempfile.TemporaryDirectory() as folder:

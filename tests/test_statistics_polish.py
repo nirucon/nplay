@@ -1,10 +1,14 @@
 import tempfile
+import time
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from nplay.statistics import StatisticsStore
 from nplay.statistics.adapter import pending_envelope
 from nplay.app import App
+
+NOW=int(time.time())
 
 class UI:
  def __init__(self):
@@ -46,12 +50,13 @@ class StatisticsPolish(unittest.TestCase):
   self.assertTrue(all(not x[2] for x in self.ui.items if x[1].startswith('stats:period:')))
  def test_provider_neutral_envelope_read_only_and_idempotent(self):
   track=SimpleNamespace(source='local',id='x',title='Track',artist='Artist',album='Album')
-  self.store.add('session',1800000000,2,track,event_id='fixed')
+  self.store.add('session',NOW,2,track,event_id='fixed')
   batch=pending_envelope(self.store)
+  expected=datetime.fromtimestamp(NOW,timezone.utc).isoformat().replace('+00:00','Z')
   self.assertEqual(batch['format'],'nplay.listening-events')
   self.assertEqual(batch['installation_id'],self.store.installation_id())
   self.assertEqual(batch['events'][0]['event_id'],'fixed')
-  self.assertEqual(batch['events'][0]['started_at'],'2027-01-15T08:00:00Z')
+  self.assertEqual(batch['events'][0]['started_at'],expected)
   self.assertEqual(len(self.store.pending_events()),1)
   self.assertEqual(batch,pending_envelope(self.store))
  def test_refresh_ignores_other_menus(self):

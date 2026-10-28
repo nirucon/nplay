@@ -6,7 +6,7 @@ A minimalist, keyboard-first terminal player for Linux, built around mpv and opt
 
 - **Local music:** indexed library, artists, albums, folders, metadata and artwork.
 - **Navidrome / Subsonic:** browse and stream music, albums and playlists.
-- **Spotify:** Spotify Web API browsing and playback through librespot or external Spotify Connect devices, with local-device recovery and clearer playback restriction diagnostics.
+- **Spotify:** Spotify Web API browsing and playback through librespot or external Spotify Connect devices (including go-librespot), with automatic external fallback when librespot is absent, local-device recovery and clearer playback restriction diagnostics.
 - **YouTube:** search and audio playback with yt-dlp.
 - **Sveriges Radio:** live channels and podcasts; custom radio streams are supported too.
 - **Playback:** queue, favorites, history, cross-source playlists, bookmarks, repeat/shuffle, resume, ReplayGain and optional gapless playback.
@@ -48,7 +48,7 @@ See [STATISTICS.md](STATISTICS.md) for setup, server requirements and privacy sa
 
 ## Status
 
-Current release: **1.5.9**, focused on Spotify browser launch reliability on minimal X11 sessions, plus the 1.5.8 mpv playback-startup and Unicode prompt fixes. No configuration, credential or database migrations in recent releases. See [CHANGELOG.md](CHANGELOG.md).
+Current release: **1.6.0**, a stabilization release with a green test suite, robust Spotify OAuth callback cleanup, external Connect fallback when librespot is absent, accurate MPRIS diagnostics, portable browser resolution and versioned statistics user-agent reporting. No configuration, credential or database migrations. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 

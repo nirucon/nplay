@@ -1,4 +1,4 @@
-# NPLAY 1.5.9 — installation
+# NPLAY 1.6.0 — installation
 
 NPLAY is a custom application made for Nicklas Rudolfsson, but is fully functional for other users.
 
@@ -12,14 +12,16 @@ NPLAY is a custom application made for Nicklas Rudolfsson, but is fully function
 Run:
 
 ```sh
-unzip NPLAY-1.5.5.zip
-cd NPLAY-1.5.5
+unzip NPLAY-1.6.0.zip
+cd NPLAY-1.6.0
 ./install.sh
 ```
 
 The installer detects `pacman` or `apt`, shows missing dependencies, asks before using `sudo`, and installs the required/recommended runtime packages when available. Core playback requires Python 3 and mpv. CAVA enables visualization, yt-dlp enables YouTube audio, and Mutagen enables robust local metadata and embedded artwork.
 
 The installer performs an atomic application-code replacement. Existing configuration, secrets, local library database, playlists, favorites, history and state under XDG config/data/state directories are not replaced.
+
+librespot is optional. If it is unavailable, Spotify can use an external Spotify Connect device, including a separately managed `go-librespot` receiver. NPLAY's managed Local Playback mode still requires a librespot binary with a working audio backend.
 
 After installation:
 

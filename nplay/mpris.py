@@ -1,13 +1,29 @@
 """Optional MPRIS2 bridge. Event-driven when dbus-python/GLib are available."""
 import threading,time
 class MPRIS:
- def __init__(self,app):self.app=app;self.available=False;self._player=None;self._loop=None;self._thread=None
+ def __init__(self,app):
+  self.app=app;self.available=False;self.external=False;self.reason='';self._player=None;self._loop=None;self._thread=None;self._started=threading.Event()
+ def status(self):
+  if self.available:return 'READY · external instance' if self.external else 'READY'
+  return self.reason or 'unavailable'
  def start(self):
   try:
    import dbus,dbus.service
    from dbus.mainloop.glib import DBusGMainLoop
    from gi.repository import GLib
-  except Exception:return False
+  except Exception as e:
+   self.reason='D-Bus Python/GLib unavailable: '+str(e);return False
+  try:DBusGMainLoop(set_as_default=True)
+  except Exception as e:
+   self.reason='D-Bus GLib main loop unavailable: '+str(e);return False
+  # Another NPLAY process legitimately owns the single MPRIS name. Report that
+  # as a healthy external instance instead of a false dependency failure.
+  try:
+   bus=dbus.SessionBus()
+   if bus.name_has_owner('org.mpris.MediaPlayer2.nplay'):
+    self.available=True;self.external=True;self.reason='another NPLAY instance owns MPRIS';self._started.set();return True
+  except Exception as e:
+   self.reason='D-Bus session unavailable: '+str(e);return False
   app=self.app
   class Service(dbus.service.Object):
    def __init__(self):
@@ -69,9 +85,14 @@ class MPRIS:
   def run():
    try:
     from gi.repository import GLib
-    self._player=Service();self.available=True;self._loop=GLib.MainLoop();self._loop.run()
-   except Exception:self.available=False
-  self._thread=threading.Thread(target=run,daemon=True);self._thread.start();time.sleep(.05);return self.available
+    self._player=Service();self.available=True;self.reason='';self._started.set();self._loop=GLib.MainLoop();self._loop.run()
+   except Exception as e:
+    self.available=False;self.reason='MPRIS service failed: '+str(e);self._started.set()
+  self._thread=threading.Thread(target=run,daemon=True);self._thread.start()
+  # Starting a D-Bus object is normally instant, but do not make --doctor race
+  # the worker thread. Wait briefly for a definitive state.
+  self._started.wait(1.0)
+  return self.available
  def changed(self,*names):
   if not self.available or not self._player:return
   try:

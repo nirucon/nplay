@@ -79,7 +79,19 @@ Relevant config keys:
 [general]
 spotify_enabled = false
 spotify_client_id =
+spotify_playback = local
+spotify_local_name = NPLAY
+spotify_local_backend = pulseaudio
+spotify_local_bitrate = 320
+spotify_local_volume = 70
 ```
+
+`spotify_playback` accepts:
+
+- `local` — NPLAY manages a local `librespot` receiver. The binary must be installed and built with a usable audio backend, normally PulseAudio.
+- `connect` — use an external Spotify Connect device such as a phone, speaker, browser player or an independently managed `go-librespot` daemon.
+
+If `local` is selected but `librespot` is missing, NPLAY tries an available external Connect device for that playback request without rewriting the saved preference. If no external device exists either, the error explains both options. `go-librespot` is an external Connect receiver, not a replacement for NPLAY's managed Local Playback engine, and does not require Rust tooling when a prebuilt binary is available.
 
 Spotify Development Mode has account/app limits controlled by Spotify. A Premium account is required. If Spotify changes API availability or scopes, NPLAY reports the provider error without affecting Local/Navidrome/SR/YouTube.
 

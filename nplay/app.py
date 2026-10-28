@@ -73,10 +73,15 @@ class App(NavigationMixin):
   d=self.spotify.wait_for_device(name,timeout);self.spotify_state['device']=d
   return d
  def _spotify_rebind(self,timeout=20):
-  d=self._spotify_local_device(timeout);self.spotify.activate_device(d['id']);self.spotify_state['device']=d;return d
+  # Match playback's external fallback: a missing librespot binary must not make
+  # pause/seek/volume/resume unusable when an external Connect device is live.
+  if self.cfg.get('spotify_playback','local')=='local' and self.spotify.local.available():
+   d=self._spotify_local_device(timeout);self.spotify.activate_device(d['id'])
+  else:d=self.spotify.playback_device()
+  self.spotify_state['device']=d;return d
  def _spotify_with_device(self,action):
   """Run a transport action against a live device, rebinding once if stale."""
-  local=self.cfg.get('spotify_playback','local')=='local';did=self._spotify_device_id()
+  local=self.cfg.get('spotify_playback','local')=='local' and self.spotify.local.available();did=self._spotify_device_id()
   if not did:
    d=self._spotify_rebind() if local else self.spotify.playback_device();did=d.get('id','');self.spotify_state['device']=d
   try:return action(did)
@@ -454,7 +459,14 @@ class App(NavigationMixin):
     # the play command. A restored paused session is only a resume candidate.
     previous_resume_candidate=self.resume_candidate;self.resume_candidate=False;self.spotify_pending_track_id=t.id
     local=self.cfg.get('spotify_playback','local')=='local'
-    if ui:ui.status('Spotify · starting '+('locally…' if local else 'on Connect device…'))
+    # A missing local engine must not strand playback when the user already has
+    # an external Connect device. Keep the user's saved preference untouched;
+    # fall back only for this request, and let the normal error path explain
+    # how to install librespot if no external device exists either.
+    fallback=local and not self.spotify.local.available()
+    if fallback:
+     log.warning('librespot unavailable · trying external Spotify Connect for request %s track=%s',request,t.id);local=False
+    if ui:ui.status('Spotify · librespot missing · trying Connect device…' if fallback else ('Spotify · starting '+('locally…' if local else 'on Connect device…')))
     def work():
      if local:
       # Normal playback never opens OAuth. Let librespot reuse whatever
@@ -475,7 +487,10 @@ class App(NavigationMixin):
       try:d=next((x for x in self.spotify.devices() if x.get('id')==did),d)
       except Exception:pass
       return d
-     d=self.spotify.play_track(t)
+     try:d=self.spotify.play_track(t)
+     except RuntimeError as e:
+      if fallback:raise RuntimeError('Local Spotify engine (librespot) is not installed and no external Spotify Connect device is available · '+str(e)) from e
+      raise
      if resume_pos and t.seekable:self.spotify.seek(resume_pos,d.get('id'))
      return d
     def started(device):
@@ -735,7 +750,7 @@ class App(NavigationMixin):
    r=self.scan();ui.status(f"Scan · {r['checked']} checked · {r['new']} new · {r['updated']} updated · {r['removed']} removed · {r['total']} indexed")
   else:ui.status('Unknown command · use :help · commands: :stop · :bookmarks · :now · :browse · :theme · :settings · :nav QUERY · :spotify QUERY · :sr QUERY · :yt QUERY · :radio p1 · :view normal|artwork|visualizer · :normalize · :gapless · :shuffle · :repeat · :sleep 30|track|album|off · :smart · :stats · :discover · :rating 0-5 · :queue-save · :queue-clear · :diagnostics · :about · :scan')
 def doctor(a=None):
- a=a or App();print(f'NPLAY {__version__} by Nicklas Rudolfsson');print('python       OK');print('mpv          '+('OK' if shutil.which('mpv') else 'MISSING'));print('yt-dlp       '+((a.yt.version()+' · '+a.yt.binary) if a.yt.available() else 'optional / missing'));print('cava         '+('OK' if shutil.which('cava') else 'optional / missing'));print('mpris        '+('READY' if a.mpris.available else ('enabled / unavailable' if a.cfg.getbool('mpris_enabled',True) else 'off')));print('notifications '+(('ON · '+str(a.notifier.binary)) if a.notifier.enabled() else ('enabled / unavailable' if a.cfg.getbool('track_notifications',True) else 'off')));print('terminal     '+os.getenv('TERM','unknown'));print('kitty        '+('YES' if os.getenv('KITTY_WINDOW_ID') else 'no'));print('library      '+str(a.db.count())+' indexed tracks · schema '+str(a.db.schema_version()));print('navidrome    '+(('enabled / configured' if a.nav_configured() else 'enabled / not configured') if a.cfg.getbool('navidrome_enabled',True) else 'disabled'));print('spotify      '+(('enabled / connected' if a.spotify_configured() else 'enabled / setup required') if a.cfg.getbool('spotify_enabled',False) else 'disabled'));print('librespot     '+(('running' if a.spotify.local.running() else 'available') if a.spotify.local.available() else 'optional / missing'));print('sr           '+('enabled' if a.cfg.getbool('sr_enabled',True) else 'disabled'));print('youtube      '+('enabled' if a.cfg.getbool('youtube_enabled',True) else 'disabled'));print('custom radio '+('enabled' if a.cfg.getbool('custom_radio_enabled',True) else 'disabled'));print('music roots  '+' : '.join(a.roots()));print('config       '+str(a.cfg.path));print('log          '+str(LOG_PATH)+' · '+str(recent_error_count())+' recent warnings/errors');print('mpv log      '+str(STATE/'mpv.log'));return 0 if shutil.which('mpv') else 1
+ a=a or App();print(f'NPLAY {__version__} by Nicklas Rudolfsson');print('python       OK');print('mpv          '+('OK' if shutil.which('mpv') else 'MISSING'));print('yt-dlp       '+((a.yt.version()+' · '+a.yt.binary) if a.yt.available() else 'optional / missing'));print('cava         '+('OK' if shutil.which('cava') else 'optional / missing'));print('mpris        '+((a.mpris.status()) if a.cfg.getbool('mpris_enabled',True) else 'off'));print('notifications '+(('ON · '+str(a.notifier.binary)) if a.notifier.enabled() else ('enabled / unavailable' if a.cfg.getbool('track_notifications',True) else 'off')));print('terminal     '+os.getenv('TERM','unknown'));print('kitty        '+('YES' if os.getenv('KITTY_WINDOW_ID') else 'no'));print('library      '+str(a.db.count())+' indexed tracks · schema '+str(a.db.schema_version()));print('navidrome    '+(('enabled / configured' if a.nav_configured() else 'enabled / not configured') if a.cfg.getbool('navidrome_enabled',True) else 'disabled'));print('spotify      '+(('enabled / connected' if a.spotify_configured() else 'enabled / setup required') if a.cfg.getbool('spotify_enabled',False) else 'disabled'));print('librespot     '+(('running' if a.spotify.local.running() else 'available') if a.spotify.local.available() else 'optional / missing'));print('sr           '+('enabled' if a.cfg.getbool('sr_enabled',True) else 'disabled'));print('youtube      '+('enabled' if a.cfg.getbool('youtube_enabled',True) else 'disabled'));print('custom radio '+('enabled' if a.cfg.getbool('custom_radio_enabled',True) else 'disabled'));print('music roots  '+' : '.join(a.roots()));print('config       '+str(a.cfg.path));print('log          '+str(LOG_PATH)+' · '+str(recent_error_count())+' recent warnings/errors');print('mpv log      '+str(STATE/'mpv.log'));return 0 if shutil.which('mpv') else 1
 def main():
  ap=argparse.ArgumentParser(prog='nplay');ap.add_argument('query',nargs='*');ap.add_argument('--version',action='store_true');ap.add_argument('--doctor',action='store_true');ap.add_argument('--scan',action='store_true');ap.add_argument('--list-themes',action='store_true');ap.add_argument('--check-theme',metavar='FILE');ap.add_argument('--stats-set-token',action='store_true');ap.add_argument('--stats-sync-now',action='store_true');args=ap.parse_args()
  if args.version:print(f'NPLAY {__version__}');return
