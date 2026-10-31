@@ -77,3 +77,21 @@ The intended dependency direction is UI/integrations → controller/services →
 ## Playback startup hardening (1.3.5)
 
 mpv-backed sources use `services/playback_start.py` as a serialized, asynchronous startup boundary. Provider resolution and the mpv `file-loaded` wait happen outside the curses thread. A monotonically increasing playback request id prevents stale work from taking ownership, while a startup lock prevents overlapping mpv launches from stopping a newer request. Stop invalidates pending requests. Spotify OAuth is intentionally excluded from ordinary playback and may only be initiated by the explicit Spotify Local setup flow.
+
+
+## 1.7 headless service boundary
+
+`nplay --serve` starts `nplay/service`, a bounded JSON-RPC 2.0 service over a
+private Unix socket. It reuses the existing `App` controller, provider adapters,
+queue, session, MPRIS and statistics paths; it does not start a second player,
+scanner, Spotify receiver or statistics pipeline. The curses UI is not imported
+by the service surface, so standalone terminal playback remains independent of
+NIRUAMP and graphics libraries.
+
+The service owns one per-user endpoint and lock. Snapshots carry a monotonic
+revision; subscribed clients receive ordered `state.changed` notifications and
+resynchronise with a full snapshot after reconnect. Track references are kept in
+a bounded catalogue so clients can request playback and artwork without receiving
+authenticated stream URLs or filesystem paths. Provider calls run off the event
+dispatcher; client queues and frames are capped, and slow clients cannot stall
+playback. See `docs/PROTOCOL.md` for the public contract.

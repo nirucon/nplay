@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""Deterministic mpv JSON-IPC stand-in for NIRUAMP/NPLAY integration tests.
+
+It never decodes audio and is not a player. It exists so the real NPLAY Player
+and service lifecycle code can be exercised on machines without mpv/audio
+hardware. Do not install it as `mpv` on a normal system.
+"""
+import json
+import os
+import signal
+import socket
+import sys
+import threading
+import time
+import wave
+
+
+socket_path = None
+url = ""
+for arg in sys.argv[1:]:
+    if arg.startswith("--input-ipc-server="):
+        socket_path = arg.split("=", 1)[1]
+    elif not arg.startswith("-"):
+        url = arg
+if not socket_path:
+    sys.exit("fake-mpv: --input-ipc-server is required")
+
+def wav_duration(path):
+    try:
+        with wave.open(path, "rb") as w:
+            rate = w.getframerate() or 1
+            return w.getnframes() / rate
+    except Exception:
+        return 180.0
+
+
+state = {
+    "path": url,
+    "pause": True,
+    "position": 0.0,
+    "duration": wav_duration(url),
+    "volume": 70.0,
+    "mute": False,
+    "started": time.monotonic(),
+}
+lock = threading.RLock()
+clients = []
+clients_lock = threading.RLock()
+stop = threading.Event()
+
+
+def position():
+    with lock:
+        if state["pause"]:
+            return state["position"]
+        return min(state["duration"], state["position"] + (time.monotonic() - state["started"]))
+
+
+def set_pause(value):
+    with lock:
+        if state["pause"] and not value:
+            state["started"] = time.monotonic()
+        if not state["pause"] and value:
+            state["position"] = min(state["duration"], state["position"] + (time.monotonic() - state["started"]))
+        state["pause"] = bool(value)
+
+
+def handle(command):
+    if not command:
+        return None
+    name = command[0]
+    args = command[1:]
+    if name == "get_property":
+        key = args[0] if args else ""
+        with lock:
+            if key == "time-pos":
+                return position()
+            if key == "duration":
+                return state["duration"]
+            if key == "pause":
+                return state["pause"]
+            if key == "mute":
+                return state["mute"]
+            if key == "volume":
+                return state["volume"]
+            if key == "idle-active":
+                return False
+            if key == "core-idle":
+                return False
+            if key == "path":
+                return state["path"]
+            if key in ("media-title", "filename"):
+                return state["path"]
+            if key == "metadata":
+                return {}
+        return None
+    if name == "set_property":
+        key, value = args[0], args[1] if len(args) > 1 else None
+        if key == "pause":
+            set_pause(value)
+        elif key == "time-pos":
+            with lock:
+                state["position"] = max(0.0, min(state["duration"], float(value or 0)))
+                state["started"] = time.monotonic()
+        elif key == "volume":
+            with lock:
+                state["volume"] = float(value or 0)
+        elif key == "mute":
+            with lock:
+                state["mute"] = bool(value)
+        return None
+    if name == "cycle" and args and args[0] == "pause":
+        set_pause(not state["pause"])
+        return None
+    if name == "cycle" and args and args[0] == "mute":
+        with lock:
+            state["mute"] = not state["mute"]
+        return None
+    if name == "seek":
+        amount = float(args[0])
+        mode = args[1] if len(args) > 1 else "relative"
+        with lock:
+            base = position()
+            state["position"] = max(0.0, min(state["duration"], base + amount if mode == "relative" else amount))
+            state["started"] = time.monotonic()
+        return None
+    if name == "add" and args and args[0] == "volume":
+        with lock:
+            state["volume"] = max(0.0, min(150.0, state["volume"] + float(args[1])))
+        return None
+    return None
+
+
+def broadcast(event):
+    payload = (json.dumps({"event": event}) + "\n").encode()
+    with clients_lock:
+        for c in list(clients):
+            try:
+                c.sendall(payload)
+            except OSError:
+                pass
+
+
+def serve_client(conn):
+    with clients_lock:
+        clients.append(conn)
+    buf = b""
+    conn.settimeout(0.5)
+    try:
+        while not stop.is_set():
+            try:
+                chunk = conn.recv(65536)
+            except socket.timeout:
+                continue
+            if not chunk:
+                break
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue
+                data = handle(msg.get("command") or [])
+                reply = {"error": "success", "data": data}
+                if "request_id" in msg:
+                    reply["request_id"] = msg["request_id"]
+                try:
+                    conn.sendall((json.dumps(reply) + "\n").encode())
+                except OSError:
+                    return
+    finally:
+        with clients_lock:
+            if conn in clients:
+                clients.remove(conn)
+        try:
+            conn.close()
+        except OSError:
+            pass
+
+
+def main():
+    try:
+        os.unlink(socket_path)
+    except FileNotFoundError:
+        pass
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(socket_path)
+    server.listen(8)
+    server.settimeout(0.5)
+
+    def term(signum, frame):
+        stop.set()
+        try:
+            server.close()
+        except OSError:
+            pass
+        try:
+            os.unlink(socket_path)
+        except OSError:
+            pass
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, term)
+    signal.signal(signal.SIGINT, term)
+    threading.Timer(0.25, lambda: broadcast("file-loaded")).start()
+    while not stop.is_set():
+        try:
+            conn, _ = server.accept()
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+        threading.Thread(target=serve_client, args=(conn,), daemon=True).start()
+    try:
+        os.unlink(socket_path)
+    except OSError:
+        pass
+
+
+if __name__ == "__main__":
+    main()

@@ -31,6 +31,7 @@ nplay
 ```sh
 nplay                     # start the player
 nplay "search terms"      # start and search immediately
+nplay --serve             # headless local control service (NIRUAMP and tools)
 nplay --doctor            # check dependencies and configuration
 nplay --scan              # rescan the local library
 nplay --version
@@ -48,10 +49,10 @@ See [STATISTICS.md](STATISTICS.md) for setup, server requirements and privacy sa
 
 ## Status
 
-Current release: **1.6.0**, a stabilization release with a green test suite, robust Spotify OAuth callback cleanup, external Connect fallback when librespot is absent, accurate MPRIS diagnostics, portable browser resolution and versioned statistics user-agent reporting. No configuration, credential or database migrations. See [CHANGELOG.md](CHANGELOG.md).
+Current release: **1.7.0**, adding a headless local control service for the NIRUAMP graphical frontend while preserving the standalone terminal player. The service is a versioned Unix-socket JSON-RPC boundary over the existing queue, playback, provider, artwork, library and statistics behaviour. No configuration, credential or database migrations. See [CHANGELOG.md](CHANGELOG.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ## Documentation
 
-[Installation](INSTALL.md) · [Keyboard controls](KEYS.md) · [Configuration](CONFIGURATION.md) · [Themes](THEMES.md) · [Statistics and sync](STATISTICS.md) · [Architecture](ARCHITECTURE.md) · [Changelog](CHANGELOG.md)
+[Installation](INSTALL.md) · [Keyboard controls](KEYS.md) · [Configuration](CONFIGURATION.md) · [Themes](THEMES.md) · [Statistics and sync](STATISTICS.md) · [Architecture](ARCHITECTURE.md) · [Control protocol](docs/PROTOCOL.md) · [Changelog](CHANGELOG.md)
 
 NPLAY is an independent personal project, shared as open source for others to use and adapt. Third-party integrations depend on external accounts, APIs and playback engines.

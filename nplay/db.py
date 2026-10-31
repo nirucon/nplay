@@ -382,3 +382,5 @@ class DB:
  def radio_add(self,name,url,homepage='',artwork=''):
   if not name.strip() or not url.startswith(('http://','https://')):raise ValueError('Station needs a name and an http(s) stream URL')
   with self.con() as c:c.execute('INSERT OR REPLACE INTO radio_stations(name,url,homepage,artwork,added) VALUES(?,?,?,?,?)',(name.strip(),url.strip(),homepage.strip(),artwork.strip(),time.time()))
+ def radio_delete(self,station_id):
+  with self.con() as c:c.execute('DELETE FROM radio_stations WHERE id=?',(int(station_id),))

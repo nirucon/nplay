@@ -1,3 +1,21 @@
+# NPLAY 1.7.0 — headless control service for NIRUAMP
+
+- Add `nplay --serve`, a versioned JSON-RPC 2.0 service over a private Unix
+  socket with snapshot/revision state, ordered `state.changed` notifications,
+  bounded queues, per-user locking and stale-socket recovery.
+- Expose playback, seek, volume, mute, repeat/shuffle, queue editing, source
+  browsing, federated search, playlists, favorites, ratings, custom radio,
+  artwork, sanitised settings, library scans, CAVA visualization and the
+  existing Spotify/Navidrome flows without forking playback or statistics.
+- Keep terminal NPLAY, `--doctor`, themes, MPRIS, providers and existing data
+  fully standalone; the service imports no GUI toolkit and needs no display.
+- Redact stream URLs, secrets and arbitrary metadata from protocol responses;
+  scope artwork to the bounded track catalogue and cap fetch/frame sizes.
+- Add end-to-end service tests for handshake, live events, playlists, malformed
+  and oversized frames, permissions, a second service, shutdown and idle exit.
+- Document the contract in `docs/PROTOCOL.md`. No data or configuration
+  migrations; minimum frontend protocol is version 1.
+
 # NPLAY 1.6.0 — stability and Spotify resilience
 
 - Add automatic external Spotify Connect fallback when `spotify_playback=local`
