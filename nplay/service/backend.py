@@ -532,6 +532,19 @@ class ServiceBackend:
         self.touch("queue")
         return self.queue_list(p)
 
+    def queue_reorder(self, p):
+        src = int(p.get("from"))
+        dst = int(p.get("to"))
+        with self.lock:
+            if src < 0 or src >= len(self.app.queue):
+                raise ParamsError("queue source index out of range")
+            dst = max(0, min(len(self.app.queue) - 1, dst))
+            item = self.app.queue.pop(src)
+            self.app.queue.insert(dst, item)
+            self.app.save_state()
+        self.touch("queue")
+        return {"index": dst, **self.queue_list(p)}
+
     def queue_move(self, p):
         index = int(p.get("index"))
         delta = int(p.get("delta", 0))
@@ -1152,6 +1165,7 @@ class ServiceBackend:
             "queue.play": self.queue_play,
             "queue.remove": self.queue_remove,
             "queue.move": self.queue_move,
+            "queue.reorder": self.queue_reorder,
             "queue.clear": self.queue_clear,
             "queue.save": self.queue_save,
             "browse": self.browse,

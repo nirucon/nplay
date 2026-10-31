@@ -131,6 +131,7 @@ service.
 | `queue.add` | `track`, optional `next` | |
 | `queue.add_many` | `tracks`, optional `next` | Max 1000 |
 | `queue.play` / `queue.remove` / `queue.move` | `index`, optional `delta` | |
+| `queue.reorder` | `from`, `to` | Move one queue item to an absolute index |
 | `queue.clear` | `{}` | |
 | `queue.save` | `name` | Saves the authoritative queue as a local playlist |
 | `browse` | `source`, `section`, optional `query`, `limit`, `offset`, `args` | See sources below |
@@ -216,5 +217,5 @@ requests, `-32010` incompatible protocol. Error `data` may include a bounded
 ## Minimum versions
 
 - Protocol version: `1`
-- NPLAY minimum: `1.7.0`
-- NIRUAMP tested against: `1.7.0`
+- NPLAY minimum: `1.7.1`
+- NIRUAMP minimum: `0.2.0`

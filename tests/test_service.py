@@ -267,6 +267,21 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(idle["status"], "idle")
             self.assertIsNone(idle["current"])
 
+    def test_queue_reorder_moves_absolute_index(self):
+        with Wire(self.svc.sock_path) as w:
+            w.request(1, "initialize", {"protocol_versions": [1]})
+            for i in range(3):
+                w.request(10 + i, "radio.add", {"name": f"Station {i}", "url": f"http://127.0.0.1:9/r{i}"})
+            tracks = w.request(3, "browse", {"source": "radio", "section": "all"})["result"]["items"]
+            self.assertEqual([x["title"] for x in tracks], ["Station 0", "Station 1", "Station 2"])
+            for i, track in enumerate(tracks):
+                w.request(4 + i, "queue.add", {"track": track})
+            r = w.request(20, "queue.reorder", {"from": 0, "to": 2})
+            self.assertEqual([x["title"] for x in r["result"]["items"]], ["Station 1", "Station 2", "Station 0"])
+            self.assertEqual(r["result"]["index"], 2)
+            r = w.request(21, "queue.reorder", {"from": 2, "to": 0})
+            self.assertEqual([x["title"] for x in r["result"]["items"]], ["Station 0", "Station 1", "Station 2"])
+
     def test_unknown_method_and_bad_params_are_structured(self):
         with Wire(self.svc.sock_path) as w:
             w.request(1, "initialize", {"protocol_versions": [1]})

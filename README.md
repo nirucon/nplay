@@ -49,7 +49,7 @@ See [STATISTICS.md](STATISTICS.md) for setup, server requirements and privacy sa
 
 ## Status
 
-Current release: **1.7.0**, adding a headless local control service for the NIRUAMP graphical frontend while preserving the standalone terminal player. The service is a versioned Unix-socket JSON-RPC boundary over the existing queue, playback, provider, artwork, library and statistics behaviour. No configuration, credential or database migrations. See [CHANGELOG.md](CHANGELOG.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md).
+Current release: **1.7.1**, adding a headless local control service for the NIRUAMP graphical frontend while preserving the standalone terminal player. The service is a versioned Unix-socket JSON-RPC boundary over the existing queue, playback, provider, artwork, library and statistics behaviour. No configuration, credential or database migrations. See [CHANGELOG.md](CHANGELOG.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md). 1.7.1 adds drag-reorder support to the queue service.
 
 ## Documentation
 

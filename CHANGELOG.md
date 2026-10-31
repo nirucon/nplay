@@ -1,3 +1,10 @@
+# NPLAY 1.7.1 — queue reorder for NIRUAMP
+
+- Add `queue.reorder` to the local control service for drag-and-drop queue
+  reordering while preserving one authoritative queue.
+- No configuration, credential or database migrations; protocol remains
+  version 1 with an additive method. Minimum NIRUAMP version is 0.2.0.
+
 # NPLAY 1.7.0 — headless control service for NIRUAMP
 
 - Add `nplay --serve`, a versioned JSON-RPC 2.0 service over a private Unix
