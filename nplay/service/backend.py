@@ -6,6 +6,7 @@ view of that state plus explicit commands that a local graphical client can use.
 """
 import base64
 import concurrent.futures
+import json
 import mimetypes
 import os
 import shutil
@@ -37,6 +38,13 @@ META_ALLOW = {
     "playlist_id", "program_id", "homepage", "spotify_url", "webpage",
     "release_date", "item_count", "owner_id", "bookmark_pos", "local_artist",
 }
+
+CONTAINER_KINDS = {"album", "artist", "playlist", "program", "folder", "device"}
+
+
+def playable_track(t):
+    return (getattr(t, "kind", "") or "track") not in CONTAINER_KINDS
+
 
 SAFE_SETTINGS = {
     "navidrome_enabled", "spotify_enabled", "sr_enabled", "youtube_enabled",
@@ -119,6 +127,8 @@ class ServiceUI:
 class ServiceBackend:
     def __init__(self, notify=None, idle_exit=0):
         self.app = App()
+        self._sanitize_queue_state()
+        self._sanitize_saved_containers()
         self.ui = ServiceUI(self)
         self.app.ui = self.ui
         self.notify = notify or (lambda method, params: None)
@@ -142,6 +152,60 @@ class ServiceBackend:
         self.app.events.subscribe("playback-state-changed", self._on_event)
         self.app.events.subscribe("media-changed", self._on_event)
         self.app.events.subscribe("integration-state-changed", self._on_event)
+
+    def _sanitize_queue_state(self):
+        """Drop legacy container rows that older frontends queued as tracks."""
+        app = self.app
+        queue = [t for t in (app.queue or []) if playable_track(t)]
+        later = [t for t in (app.later_queue or []) if playable_track(t)]
+        changed = queue != (app.queue or []) or later != (app.later_queue or [])
+        if app.play_context:
+            context = [t for t in app.play_context if playable_track(t)]
+            if context != app.play_context:
+                changed = True
+                app.play_context = context
+                if app.current and playable_track(app.current):
+                    app.context_index = next((i for i, t in enumerate(context) if t.source == app.current.source and t.id == app.current.id), -1)
+                else:
+                    app.context_index = -1
+        if changed:
+            app.queue = queue
+            app.later_queue = later
+            try:
+                app.save_state()
+            except Exception:
+                pass
+            log.warning("service removed legacy non-playable queue/context rows")
+
+    def _sanitize_saved_containers(self):
+        """Remove legacy container rows from playlists/favorites.
+
+        Older NIRUAMP builds could offer album/artist/playlist actions directly.
+        Those rows cannot be played, so clean the damage once at service start.
+        """
+        removed = 0
+        try:
+            with self.app.db.con() as c:
+                for row in c.execute("SELECT id,data FROM playlist_items").fetchall():
+                    try:
+                        kind = (json.loads(row["data"]) or {}).get("kind", "track")
+                    except Exception:
+                        continue
+                    if kind in CONTAINER_KINDS:
+                        c.execute("DELETE FROM playlist_items WHERE id=?", (row["id"],))
+                        removed += 1
+                for row in c.execute("SELECT item_key,data FROM favorites").fetchall():
+                    try:
+                        kind = (json.loads(row["data"]) or {}).get("kind", "track")
+                    except Exception:
+                        continue
+                    if kind in CONTAINER_KINDS:
+                        c.execute("DELETE FROM favorites WHERE item_key=?", (row["item_key"],))
+                        removed += 1
+        except Exception:
+            log.debug("saved container cleanup failed", exc_info=True)
+        if removed:
+            log.warning("service removed %s legacy non-playable playlist/favorite rows", removed)
 
     # -- state -----------------------------------------------------------
     def _on_event(self, event, **payload):
@@ -379,6 +443,8 @@ class ServiceBackend:
     # -- playback --------------------------------------------------------
     def play(self, p):
         t = self._resolve(p.get("track"))
+        if not playable_track(t):
+            raise ParamsError("container items must be expanded into tracks before playback", {"kind": t.kind})
         context = p.get("context")
         index = p.get("index")
         with self.lock:
@@ -488,6 +554,8 @@ class ServiceBackend:
 
     def queue_add(self, p):
         t = self._resolve(p.get("track"))
+        if not playable_track(t):
+            raise ParamsError("container items must be expanded into tracks before queueing", {"kind": t.kind})
         with self.lock:
             if p.get("next"):
                 self.app.queue_next(t, self.ui)
@@ -503,6 +571,9 @@ class ServiceBackend:
         if len(refs) > 1000:
             raise ParamsError("too many tracks")
         xs = self._resolve_many(refs)
+        bad = next((t for t in xs if not playable_track(t)), None)
+        if bad is not None:
+            raise ParamsError("container items must be expanded into tracks before queueing", {"kind": bad.kind})
         with self.lock:
             if p.get("next"):
                 self.app.queue[0:0] = xs
@@ -802,7 +873,26 @@ class ServiceBackend:
     def playlist_add(self, p):
         pid = int(p.get("id"))
         t = self._resolve(p.get("track"))
+        if not playable_track(t):
+            raise ParamsError("container items must be expanded into tracks before adding to a playlist", {"kind": t.kind})
         self.app.db.playlist_add(pid, t)
+        return self.playlist_tracks({"id": pid})
+
+    def playlist_add_many(self, p):
+        pid = int(p.get("id"))
+        refs = p.get("tracks")
+        if not isinstance(refs, list) or not refs:
+            raise ParamsError("tracks must be a non-empty list")
+        if len(refs) > 5000:
+            raise ParamsError("too many tracks")
+        xs = self._resolve_many(refs)
+        bad = next((t for t in xs if not playable_track(t)), None)
+        if bad is not None:
+            raise ParamsError("container items must be expanded into tracks before adding to a playlist", {"kind": bad.kind})
+        with self.lock:
+            for t in xs:
+                self.app.db.playlist_add(pid, t)
+            self._remember_many(xs)
         return self.playlist_tracks({"id": pid})
 
     def playlist_remove(self, p):
@@ -838,6 +928,8 @@ class ServiceBackend:
 
     def favorite_toggle(self, p):
         t = self._resolve(p.get("track"))
+        if not playable_track(t):
+            raise ParamsError("favorites are supported for playable tracks only", {"kind": t.kind})
         added = self.app.db.favorite(t)
         return {"added": bool(added), "track": self.track_wire(t)}
 
@@ -847,6 +939,8 @@ class ServiceBackend:
 
     def rating_set(self, p):
         t = self._resolve(p.get("track"))
+        if not playable_track(t):
+            raise ParamsError("ratings are supported for playable tracks only", {"kind": t.kind})
         rating = max(0, min(5, int(p.get("rating") or 0)))
         self.app.db.rating_set(t.id, rating, t.source)
         return {"rating": rating, "track": self.track_wire(t)}
@@ -1174,6 +1268,7 @@ class ServiceBackend:
             "playlists.tracks": self.playlist_tracks,
             "playlists.create": self.playlist_create,
             "playlists.add": self.playlist_add,
+            "playlists.add_many": self.playlist_add_many,
             "playlists.remove": self.playlist_remove,
             "playlists.move": self.playlist_move,
             "playlists.rename": self.playlist_rename,

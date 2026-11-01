@@ -282,6 +282,41 @@ class ServiceTests(unittest.TestCase):
             r = w.request(21, "queue.reorder", {"from": 2, "to": 0})
             self.assertEqual([x["title"] for x in r["result"]["items"]], ["Station 0", "Station 1", "Station 2"])
 
+    def test_containers_are_rejected_and_bulk_playlist_add_works(self):
+        # Add a tiny local library so browse can produce an album container.
+        music = Path(self.svc.env["HOME"]) / "Music" / "Test Album"
+        music.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(music / "one.wav"), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(8000)
+            w.writeframes(b"\x00\x00" * 800)
+        with Wire(self.svc.sock_path) as w:
+            w.request(1, "initialize", {"protocol_versions": [1]})
+            w.request(2, "library.scan", {"force": True})
+            album = None
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                items = w.request(10, "browse", {"source": "local", "section": "albums"})["result"]["items"]
+                if items:
+                    album = items[0]
+                    break
+                time.sleep(0.2)
+            self.assertIsNotNone(album, "local album was not indexed")
+            self.assertEqual(album["kind"], "album")
+            r = w.request(3, "queue.add", {"track": album})
+            self.assertEqual(r["error"]["code"], -32602)
+            r = w.request(4, "playback.play", {"track": album})
+            self.assertEqual(r["error"]["code"], -32602)
+            # A normal track still works and can be bulk-added to a playlist.
+            tracks = w.request(5, "browse", {"source": "local", "section": "all"})["result"]["items"]
+            self.assertTrue(tracks)
+            p = w.request(6, "playlists.create", {"name": "Bulk"})["result"]
+            r = w.request(7, "playlists.add_many", {"id": p["id"], "tracks": tracks})
+            self.assertEqual(len(r["result"]["items"]), len(tracks))
+            r = w.request(8, "playlists.add", {"id": p["id"], "track": album})
+            self.assertEqual(r["error"]["code"], -32602)
+
     def test_unknown_method_and_bad_params_are_structured(self):
         with Wire(self.svc.sock_path) as w:
             w.request(1, "initialize", {"protocol_versions": [1]})

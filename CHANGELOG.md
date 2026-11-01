@@ -1,3 +1,13 @@
+# NPLAY 1.7.2 — container safety and playlist bulk add
+
+- Reject album, artist, playlist, programme, folder and device rows from
+  `playback.play`, `queue.add`/`add_many`, `playlists.add` and favorites/ratings.
+  Clients must expand containers into their playable tracks first.
+- Add `playlists.add_many` for album/playlist/manual multi-track insertion.
+- Sanitize legacy persisted queue/context rows that older frontends queued as
+  container objects.
+- No configuration or database migrations; protocol remains version 1.
+
 # NPLAY 1.7.1 — queue reorder for NIRUAMP
 
 - Add `queue.reorder` to the local control service for drag-and-drop queue
