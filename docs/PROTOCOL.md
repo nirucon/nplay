@@ -218,5 +218,5 @@ requests, `-32010` incompatible protocol. Error `data` may include a bounded
 ## Minimum versions
 
 - Protocol version: `1`
-- NPLAY minimum: `1.7.2`
-- NIRUAMP minimum: `0.3.1`
+- NPLAY minimum: `1.7.3`
+- NIRUAMP minimum: `0.3.2`

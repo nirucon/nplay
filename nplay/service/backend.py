@@ -1007,8 +1007,8 @@ class ServiceBackend:
         with self._vis_lock:
             if self._vis is None:
                 self._vis = Visualizer()
-            if not self._vis.running:
-                self._vis.start()
+            if not self._vis.running and not self._vis.start():
+                raise BackendError("CAVA could not start", {"remedy": "Check the PipeWire/PulseAudio monitor source and restart cava"})
             self._vis_last = time.monotonic()
             return {"available": True, "bars": self._vis.bars}
 
@@ -1022,8 +1022,15 @@ class ServiceBackend:
     def visualization_data(self, p):
         bars = max(8, min(96, int(p.get("bars") or 32)))
         with self._vis_lock:
-            if not self._vis or not self._vis.running:
-                raise BackendError("visualization is not running")
+            if self._vis is None:
+                self._vis = Visualizer()
+            if not self._vis.running:
+                # CAVA can exit when the audio server or monitor source is not
+                # ready yet. Recover on the next visualizer frame instead of
+                # leaving the GUI stuck on "unavailable".
+                if not self._vis.start():
+                    raise BackendError("CAVA could not start", {"remedy": "Check the PipeWire/PulseAudio monitor source and restart cava"})
+                log.info("service restarted CAVA after an unexpected exit")
             self._vis_last = time.monotonic()
             return {"bars": [int(x) for x in self._vis.get(bars)]}
 

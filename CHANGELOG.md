@@ -1,3 +1,12 @@
+# NPLAY 1.7.3 — CAVA recovery
+
+- Report an accurate error when CAVA cannot start instead of claiming the
+  visualizer is available with empty data.
+- Detect CAVA process exit and restart it on the next visualization frame, so a
+  transient audio-server/monitor-source failure no longer leaves the GUI stuck
+  on “visualizer unavailable”.
+- No configuration, credential or database migrations; protocol remains 1.
+
 # NPLAY 1.7.2 — container safety and playlist bulk add
 
 - Reject album, artist, playlist, programme, folder and device rows from
