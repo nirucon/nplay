@@ -2,6 +2,17 @@
 
 A minimalist, keyboard-first terminal player for Linux, built around mpv and optional streaming engines. Created by **Ing Leif Nicklas Rudolfsson** and released under the **MIT License**.
 
+## Relationship to NIRUX and NIRUAMP
+
+NPLAY is an optional member of the **NIRUX** suite (`nirux extras install nplay`).
+It is a complete, standalone terminal player: it does not require NIRUX, X11, a
+display server or NIRUAMP.
+
+**NIRUAMP** is the optional graphical Winamp-inspired frontend for NPLAY. It is
+not a separate player: NPLAY 1.7.1 or newer is a hard runtime dependency, and
+NIRUAMP cannot run without it. Installing or running NPLAY alone remains fully
+supported.
+
 ## Features
 
 - **Local music:** indexed library, artists, albums, folders, metadata and artwork.
