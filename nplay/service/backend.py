@@ -1030,6 +1030,9 @@ class ServiceBackend:
         return Visualizer(on_frame=self._on_vis_frame, on_exit=self._on_vis_exit)
 
     def _vis_ensure_locked(self):
+        # Hot path for 30 Hz pollers: nothing but a flag check while CAVA runs.
+        if self._vis is not None and self._vis.running:
+            return False
         if not shutil.which("cava"):
             raise BackendError("CAVA is not installed", {"remedy": "Install cava to enable visualization"})
         if self._vis is None:

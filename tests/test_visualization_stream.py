@@ -96,6 +96,7 @@ class VisualizationStreamTests(unittest.TestCase):
             r = w.request(2, "visualization.subscribe", {"bars": 16, "fps": 30})
             self.assertTrue(r["result"]["subscribed"])
             self.assertEqual(r["result"]["bars"], 16)
+            self.assertFalse([n for n in w.notes if "vis" in n], "a frame preceded the subscribe response")
             got = self.frames(w, 1.5)
             # ~15 distinct music frames, then exactly one silent frame, then nothing.
             self.assertGreaterEqual(len(got), 8, got[:3])

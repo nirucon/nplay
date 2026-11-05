@@ -2,10 +2,10 @@
 import fcntl
 import json
 import os
+import select
 import signal
 import socket
 import stat
-import struct
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -36,7 +36,7 @@ MAX_OUTSTANDING = 8
 # Pushed visualization frames beyond this backlog are dropped, so a stalled
 # client can never fill the queue and lose responses.
 MAX_FRAME_BACKLOG = 8
-SEND_TIMEOUT = 5
+SOCKET_TIMEOUT = 5
 _CLOSE = object()
 
 
@@ -54,22 +54,20 @@ class Client:
         self.writer = threading.Thread(target=self._write, daemon=True, name="nplay-client-write")
 
     def start(self):
-        # The socket stays blocking for reads; a stalled peer can block a
-        # write for at most SEND_TIMEOUT seconds (SO_SNDTIMEO), then the
-        # connection is closed.
-        self.sock.settimeout(None)
-        try:
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDTIMEO, struct.pack("ll", SEND_TIMEOUT, 0))
-        except (OSError, struct.error):
-            self.sock.settimeout(float(SEND_TIMEOUT))
+        # One socket timeout bounds a stalled peer's write to SOCKET_TIMEOUT
+        # seconds; the reader simply re-waits on timeout, so an idle connection
+        # costs one wakeup per SOCKET_TIMEOUT. (A fully blocking recv measured
+        # one extra context switch per request on CPython 3.13.)
+        self.sock.settimeout(float(SOCKET_TIMEOUT))
         self.writer.start()
         self.reader.start()
 
-    def send(self, obj, droppable=False):
+    def send(self, obj, droppable=False, after=None):
+        """Queue one message. `after` runs on the writer once it is on the wire."""
         if not self.alive:
             return False
         try:
-            self.queue.put_nowait(obj)
+            self.queue.put_nowait((obj, after) if after else obj)
             return True
         except Full:
             if droppable:
@@ -78,8 +76,40 @@ class Client:
             return False
 
     def send_frame(self, obj):
-        """Queue one pushed visualization frame; dropped (never fatal) when the client lags."""
-        if not self.alive or self.queue.qsize() >= MAX_FRAME_BACKLOG:
+        """Send one pushed visualization frame; dropped (never fatal) when the client lags.
+
+        Fast path: when nothing else is queued or being written, the frame is
+        written directly from CAVA's reader thread with a non-blocking send,
+        which saves a writer-thread wakeup per frame. Otherwise it is queued
+        behind other messages, bounded by MAX_FRAME_BACKLOG.
+        """
+        if not self.alive:
+            return False
+        if self.queue.empty() and self.write_lock.acquire(blocking=False):
+            try:
+                data = encode(obj)
+                # Never block CAVA's reader thread: drop the frame unless the
+                # socket is writable right now (the timeout-mode send would
+                # otherwise wait up to SOCKET_TIMEOUT).
+                if not select.select([], [self.sock], [], 0)[1]:
+                    return False
+                try:
+                    n = self.sock.send(data, socket.MSG_DONTWAIT)
+                except (BlockingIOError, InterruptedError):
+                    return False
+                if n < len(data):
+                    # Rare: socket buffer nearly full. Finish the line so framing
+                    # stays intact (bounded by SOCKET_TIMEOUT).
+                    self.sock.sendall(data[n:])
+                return True
+            except OSError:
+                failed = True
+            finally:
+                self.write_lock.release()
+            if failed:
+                self.close()
+                return False
+        if self.queue.qsize() >= MAX_FRAME_BACKLOG:
             return False
         try:
             self.queue.put_nowait(obj)
@@ -94,12 +124,20 @@ class Client:
             obj = self.queue.get()
             if obj is _CLOSE or not self.alive:
                 return
+            after = None
+            if isinstance(obj, tuple):
+                obj, after = obj
             try:
                 with self.write_lock:
                     self.sock.sendall(encode(obj))
             except Exception:
                 self.close()
                 return
+            if after:
+                try:
+                    after()
+                except Exception:
+                    log.debug("post-send hook failed", exc_info=True)
 
     def send_sync(self, obj):
         try:
@@ -110,11 +148,13 @@ class Client:
             return False
 
     def _read(self):
-        # Blocking recv: close() (shutdown) or the peer ends it; no idle polling.
+        # close() (shutdown) or the peer ends the loop; no short polling.
         buf = b""
         while self.alive:
             try:
                 chunk = self.sock.recv(65536)
+            except socket.timeout:
+                continue
             except OSError:
                 break
             if not chunk:
@@ -164,9 +204,11 @@ class Client:
                 result = self.server.backend.visualization_unsubscribe(params, client=self)
             else:
                 result = self.server.backend.dispatch(method, params)
-            self.send(response(req_id, result))
             if method == "visualization.subscribe":
-                self.server.backend.visualization_activate(self)
+                # Frames start only after the subscribe response is on the wire.
+                self.send(response(req_id, result), after=lambda: self.server.backend.visualization_activate(self))
+            else:
+                self.send(response(req_id, result))
         except RpcError as e:
             self.send(error_response(req_id, e))
         except (ValueError, KeyError, TypeError) as e:
