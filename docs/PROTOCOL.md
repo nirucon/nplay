@@ -1,4 +1,4 @@
-# NPLAY local control protocol (version 1)
+# NPLAY local control protocol (version 1.1)
 
 NPLAY 1.7.0 adds a headless control service for graphical clients such as
 NIRUAMP. The terminal player is unchanged and does not require the service, a
@@ -85,8 +85,11 @@ connection. The subscribe result is a fresh snapshot.
     "playlists": true, "favorites": true, "ratings": true,
     "spotify": false, "navidrome": false, "youtube": false,
     "cava": false, "mpv": true,
-    "backend_version": "1.7.0", "protocol_version": 1,
-    "messages": ["state.changed","library.scanned","spotify.auth"]
+    "backend_version": "1.8.0", "protocol_version": 1, "protocol_minor": 1,
+    "visualization_stream": true, "visualization_encodings": ["json","b64"],
+    "visualization_max_fps": 30,
+    "messages": ["state.changed","library.scanned","spotify.auth"],
+    "push": ["vis"]
   }
 }
 ```
@@ -147,7 +150,10 @@ service.
 | `ratings.get` / `ratings.set` | `track`, optional `rating` 0–5 | |
 | `radio.add` / `radio.delete` | `name`,`url` / `id` | |
 | `artwork.get` | `track` | Returns `mime` and base64 `data`; empty result uses `empty: true` |
-| `visualization.start` / `stop` / `data` | optional `bars` 8–96 | Requires CAVA; no synthetic data |
+| `visualization.start` / `stop` / `data` | optional `bars` 8–96 | Requires CAVA; no synthetic data. `data` is the 1.0 polling path and stays supported |
+| `visualization.subscribe` | optional `bars` 8–96 (32), `fps` 1–30 (30), `encoding` `json`/`b64` (`json`) | 1.1: push frames to this connection, see below |
+| `visualization.unsubscribe` | `{}` | 1.1: end the push stream on this connection |
+| `visualization.status` | `{}` | 1.1: `running`, `subscribers`, `pushed`, `suppressed`, `dropped`, `polled_recently` |
 | `settings.get` | `{}` | Sanitised; never returns secrets |
 | `settings.set` | `settings` map | Allowlisted non-secret keys only |
 | `navidrome.setup` / `navidrome.clear` | `url`,`user`,`password` / `{}` | Credentials go straight to NPLAY's 0600 secrets file |
@@ -155,7 +161,7 @@ service.
 | `spotify.devices` / `spotify.transfer` | `{}` / `device_id`, `play` | |
 | `library.scan` | optional `force` | Asynchronous; emits `library.scanned` |
 | `library.stats` | `{}` | Counts, roots, schema |
-| `service.info` | `{}` | Backend version, pid, uptime |
+| `service.info` | `{}` | Backend version, protocol version/minor, pid, uptime, `visualization` status |
 | `service.shutdown` | `{}` | Graceful stop; intended for an owned service |
 
 ### Browse sections
@@ -193,6 +199,59 @@ capability changes:
 `revision` is monotonic. A client that missed events must reconnect or call
 `state.snapshot`; it must not infer queue or playback state from event ordering
 alone. `library.scanned` and `spotify.auth` carry operation results.
+
+## Versioning
+
+`protocol_version` is the major version (still `1`); clients keep sending
+`"protocol_versions":[1]`. `protocol_minor` (snapshot, capabilities,
+`service.info`, `settings.get` `system`) grows only for additions:
+
+| Minor | NPLAY | Additions |
+|---|---|---|
+| 1.0 | 1.7.0 | Initial protocol (`protocol_minor` absent means 0) |
+| 1.1 | 1.8.0 | `visualization.subscribe` / `unsubscribe` / `status`, capability `visualization_stream` |
+
+## Visualization stream (1.1)
+
+A client chooses the transport from the handshake capabilities:
+
+- `capabilities.visualization_stream == true` and `capabilities.visualization`
+  (CAVA installed) → call `visualization.subscribe` once while the spectrum is
+  visible and `visualization.unsubscribe` when it is hidden.
+- otherwise (NPLAY ≤ 1.7.x) → keep polling `visualization.data`.
+
+```json
+{"jsonrpc":"2.0","id":7,"method":"visualization.subscribe","params":{"bars":48,"fps":30,"encoding":"json"}}
+{"jsonrpc":"2.0","id":7,"result":{"subscribed":true,"bars":48,"fps":30,"encoding":"json","source":"cava"}}
+{"vis":[0,12,40,255, ...]}
+{"vis":[0,10,38,250, ...]}
+```
+
+- Each pushed frame is one line, **not** a JSON-RPC message: an object with a
+  `vis` key and no `jsonrpc`/`id`/`method`. With `encoding:"json"` `vis` is an
+  array of `bars` integers 0–255; with `encoding:"b64"` it is the base64 of
+  `bars` bytes and the frame also carries `"enc":"b64"`. Clients route a line
+  with a `vis` key to the visualizer before JSON-RPC handling.
+- The first frame always follows the `subscribe` response. Calling
+  `subscribe` again on the same connection replaces `bars`/`fps`/`encoding`.
+- Frames come from CAVA's own 30 fps clock, limited to the requested `fps`.
+- A frame identical to the previous one sent to that connection is not sent.
+  During silence the client receives one all-zero frame and then nothing until
+  the audio changes; it must keep showing the last frame (no timeout-to-zero).
+- Frames are droppable: a client that does not read gets at most a small
+  backlog; responses and notifications are never displaced by frames.
+- The stream ends on `visualization.unsubscribe` or disconnect. CAVA stops as
+  soon as no connection is subscribed and no `visualization.data` request
+  arrived in the last 2 s; a poll-only CAVA stops 15 s after the last request.
+- If CAVA exits while a connection is subscribed, the service restarts it with
+  backoff (1–30 s); the stream simply resumes.
+- `visualization.stop` never ends another connection's stream.
+
+Measured on Python 3.12 (per frame, encoding only): 32 bars `json` 3.8 µs /
+125 B, `b64` 2.6 µs / 67 B; 96 bars `json` 7.5 µs / 349 B, `b64` 3.2 µs /
+151 B. The old `visualization.data` response cost 4.3–8.0 µs to encode plus a
+request parse, dispatch and two thread hand-offs per frame. `b64` is the
+cheapest; `json` is the default for simple clients.
 
 ## Errors
 

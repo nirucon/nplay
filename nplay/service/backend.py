@@ -22,6 +22,7 @@ from ..providers import Navidrome, YouTube
 from ..service.protocol import (
     BackendError,
     MAX_TRACKS,
+    PROTOCOL_MINOR,
     PROTOCOL_VERSION,
     ParamsError,
     RpcError,
@@ -359,12 +360,19 @@ class ServiceBackend:
             "mpv": bool(shutil.which("mpv")),
             "backend_version": __version__,
             "protocol_version": PROTOCOL_VERSION,
+            "protocol_minor": PROTOCOL_MINOR,
+            # Protocol 1.1: visualization.subscribe pushes frames to this
+            # connection. "visualization"/"cava" still say whether CAVA exists.
+            "visualization_stream": True,
+            "visualization_encodings": ["json", "b64"],
+            "visualization_max_fps": 30,
         }
 
     def snapshot(self):
         with self.lock:
             return {
                 "protocol_version": PROTOCOL_VERSION,
+                "protocol_minor": PROTOCOL_MINOR,
                 "backend": {
                     "name": "nplay",
                     "version": __version__,
@@ -1214,7 +1222,7 @@ class ServiceBackend:
             "navidrome": {"configured": self.app.nav_configured(), "url": c.get("navidrome_url", ""), "user": c.get("navidrome_user", "")},
             "spotify": {"configured": self.app.spotify_configured(), "enabled": c.getbool("spotify_enabled", False)},
             "library": {"roots": self.app.roots(), "tracks": self.app.db.count(), "last_scan": dict(self.app.db.last_scan or {})},
-            "system": {"version": __version__, "protocol": PROTOCOL_VERSION, "log": str(LOG_PATH)},
+            "system": {"version": __version__, "protocol": PROTOCOL_VERSION, "protocol_minor": PROTOCOL_MINOR, "log": str(LOG_PATH)},
         }
 
     def settings_set(self, p):
@@ -1364,11 +1372,13 @@ class ServiceBackend:
     def info(self, p):
         return {
             "protocol_version": PROTOCOL_VERSION,
+            "protocol_minor": PROTOCOL_MINOR,
             "backend_version": __version__,
             "pid": os.getpid(),
             "socket": str(self._socket_path or ""),
             "uptime": max(0.0, time.monotonic() - self._started),
             "idle_exit": self.idle_exit,
+            "visualization": self.visualization_status(),
         }
 
     def close(self):
@@ -1476,6 +1486,7 @@ class ServiceBackend:
             raise RpcError(-32010, "incompatible protocol version", {"server": PROTOCOL_VERSION, "client": versions})
         snap = self.snapshot()
         snap["protocol_version"] = PROTOCOL_VERSION
+        snap["protocol_minor"] = PROTOCOL_MINOR
         snap["client"] = {
             "name": str(client.get("name") or "unknown")[:80],
             "version": str(client.get("version") or "")[:40],
@@ -1483,4 +1494,6 @@ class ServiceBackend:
         snap["capabilities"]["messages"] = [
             "state.changed", "library.scanned", "spotify.auth",
         ]
+        # Non-JSON-RPC push lines a subscribed connection may receive.
+        snap["capabilities"]["push"] = ["vis"]
         return snap

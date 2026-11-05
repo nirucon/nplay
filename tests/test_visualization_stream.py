@@ -77,6 +77,19 @@ class VisualizationStreamTests(unittest.TestCase):
             else:
                 w.notes.append(msg)
 
+    def test_capabilities_advertise_stream(self):
+        with Wire(self.svc.sock_path) as w:
+            snap = w.request(1, "initialize", {"protocol_versions": [1]})["result"]
+            caps = snap["capabilities"]
+            self.assertTrue(caps["visualization_stream"])
+            self.assertEqual(caps["protocol_version"], 1)
+            self.assertGreaterEqual(caps["protocol_minor"], 1)
+            self.assertIn("json", caps["visualization_encodings"])
+            self.assertIn("b64", caps["visualization_encodings"])
+            self.assertGreaterEqual(snap["protocol_minor"], 1)
+            info = w.request(2, "service.info")["result"]
+            self.assertGreaterEqual(info["protocol_minor"], 1)
+
     def test_subscribe_push_silence_and_unsubscribe(self):
         with Wire(self.svc.sock_path) as w:
             w.request(1, "initialize", {"protocol_versions": [1]})

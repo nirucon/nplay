@@ -16,6 +16,7 @@ from ..redact import redact_text
 from .backend import ServiceBackend
 from .protocol import (
     MAX_FRAME,
+    PROTOCOL_MINOR,
     PROTOCOL_VERSION,
     RpcError,
     BackendError,
@@ -289,7 +290,7 @@ class ControlServer:
         s.listen(16)
         s.settimeout(0.5)
         self.listener = s
-        log.info("nplay service listening path=%s protocol=%s pid=%s", self.path, PROTOCOL_VERSION, os.getpid())
+        log.info("nplay service listening path=%s protocol=%s.%s pid=%s", self.path, PROTOCOL_VERSION, PROTOCOL_MINOR, os.getpid())
 
     def _idle_loop(self):
         while not self.stop_event.wait(0.5):

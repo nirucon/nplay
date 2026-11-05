@@ -12,6 +12,10 @@ import os
 from pathlib import Path
 
 PROTOCOL_VERSION = 1
+# Minor version: additions only, every 1.x request keeps working.
+#   1.0  NPLAY 1.7.0  initial protocol
+#   1.1  NPLAY 1.8.0  visualization.subscribe/unsubscribe/status push stream
+PROTOCOL_MINOR = 1
 SERVICE_NAME = "nplay"
 MAX_FRAME = 1024 * 1024
 MAX_TRACKS = 5000
