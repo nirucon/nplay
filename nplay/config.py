@@ -2,6 +2,23 @@ from pathlib import Path
 import configparser, os
 APP='nplay'; DATA=Path(os.getenv('XDG_DATA_HOME',Path.home()/'.local/share'))/APP; STATE=Path(os.getenv('XDG_STATE_HOME',Path.home()/'.local/state'))/APP; CONFIG=Path(os.getenv('XDG_CONFIG_HOME',Path.home()/'.config'))/APP
 for p in (DATA,STATE,CONFIG):p.mkdir(parents=True,exist_ok=True)
+# Logs and session state can reveal listening history: keep the state directory private.
+try:os.chmod(STATE,0o700)
+except OSError:pass
+def private_runtime_dir():
+ """Return NPLAY's private (0700, owner-only) runtime directory for sockets and temp configs."""
+ import stat,tempfile
+ base=os.getenv('XDG_RUNTIME_DIR')
+ d=(Path(base)/APP) if base else (STATE/'run')
+ try:
+  d.mkdir(parents=True,exist_ok=True);os.chmod(d,0o700);st=os.lstat(d)
+  if stat.S_ISDIR(st.st_mode) and st.st_uid==os.getuid() and len(str(d))<=80:return d
+ except OSError:pass
+ # Unusable or too long for AF_UNIX: a fresh private directory, never a shared /tmp file.
+ global _FALLBACK_RUNTIME
+ if _FALLBACK_RUNTIME is None or not os.path.isdir(_FALLBACK_RUNTIME):_FALLBACK_RUNTIME=tempfile.mkdtemp(prefix='nplay-')
+ return Path(_FALLBACK_RUNTIME)
+_FALLBACK_RUNTIME=None
 DEFAULT_KEYS={'play_pause':'SPACE','next':'n','previous':'p','seek_back':'LEFT','seek_forward':'RIGHT','seek_back_long':'H','seek_forward_long':'L','volume_up':'+','volume_down':'-','mute':'m','search':'/','browse':'b','queue':'q','favorite':'f','visualizer':'v','help':'?','back':'ESC','quit':'Q','down':'j','up':'k','activate':'ENTER','command':':','refresh':'u','home':'g'}
 class Config:
  def __init__(self):

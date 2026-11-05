@@ -12,6 +12,7 @@ from pathlib import Path
 from queue import Empty, Full, Queue
 
 from ..logging_utils import logger
+from ..redact import redact_text
 from .backend import ServiceBackend
 from .protocol import (
     MAX_FRAME,
@@ -141,10 +142,10 @@ class Client:
         except RpcError as e:
             self.send(error_response(req_id, e))
         except (ValueError, KeyError, TypeError) as e:
-            self.send(error_response(req_id, RpcError(-32602, "invalid parameters", {"detail": str(e)[:200]})))
+            self.send(error_response(req_id, RpcError(-32602, "invalid parameters", {"detail": redact_text(e)[:200]})))
         except Exception as e:
             log.exception("service request failed method=%s", method)
-            self.send(error_response(req_id, RpcError(-32603, "internal error", {"detail": str(e)[:200]})))
+            self.send(error_response(req_id, RpcError(-32603, "internal error", {"detail": redact_text(e)[:200]})))
         finally:
             with self.lock:
                 self.outstanding -= 1

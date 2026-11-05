@@ -5,6 +5,8 @@ The previous authoritative media remains current until the new transport is read
 """
 import threading,time
 from ..logging_utils import logger
+from ..providers import NavidromeError
+from ..redact import redact_text
 log=logger()
 
 class MpvStartCoordinator:
@@ -33,16 +35,26 @@ class MpvStartCoordinator:
     with self._start_lock:
      if request!=a.playback_request:return
      rg=a.normalization_mode(track);load_started=time.monotonic()
-     a.player.start(url,replaygain=rg,preamp=float(a.cfg.get('replaygain_preamp','0') or 0),clip=a.cfg.getbool('replaygain_clip',True),gapless=a.cfg.getbool('gapless',False),ytdl_path=(a.yt.binary if track.source=='youtube' else None))
+     try:a.player.start(url,replaygain=rg,preamp=float(a.cfg.get('replaygain_preamp','0') or 0),clip=a.cfg.getbool('replaygain_clip',True),gapless=a.cfg.getbool('gapless',False),ytdl_path=(a.yt.binary if track.source=='youtube' else None))
+     except RuntimeError:
+      if track.source!='navidrome':raise
+      self._navidrome_stream_failed(url)
     load_ms=int((time.monotonic()-load_started)*1000);total_ms=int((time.monotonic()-started)*1000)
     log.info('mpv ready request=%s source=%s track=%s load_ms=%d total_ms=%d',request,track.source,track.id,load_ms,total_ms)
     if request!=a.playback_request:
      log.info('mpv ready ignored stale request=%s current_request=%s',request,a.playback_request);return
     ui.post(lambda track=track:self._commit(track,ui,request,resume_pos,was_spotify,total_ms))
    except Exception as e:
-    msg=str(e);log.exception('mpv start failed request=%s source=%s track=%s',request,t.source,t.id)
+    msg=redact_text(e);log.exception('mpv start failed request=%s source=%s track=%s',request,t.source,t.id)
     if request==a.playback_request:ui.post(lambda msg=msg:ui.status('Playback failed · '+msg))
   ui.status('Loading · '+t.title);ui.invalidate();threading.Thread(target=work,daemon=True,name=f'nplay-mpv-{request}').start()
+ def _navidrome_stream_failed(self,url):
+  """Turn an mpv load failure into an actionable, credential-free Navidrome error."""
+  n=self.app.nav();status=n.stream_status(url) if n else None
+  if status in (401,403):raise NavidromeError('Navidrome rejected the stream',status) from None
+  if status and status>=400:raise NavidromeError('Navidrome stream failed',status) from None
+  if status is None:raise NavidromeError('Navidrome is unreachable') from None
+  raise NavidromeError('Navidrome stream could not be decoded',status,remedy='see mpv.log for the decoder error') from None
  def _commit(self,t,ui,request,resume_pos,was_spotify,total_ms):
   a=self.app
   if request!=a.playback_request:return

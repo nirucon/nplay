@@ -1,8 +1,9 @@
 from . import __version__
-import urllib.request,urllib.parse,json,subprocess,shutil,hashlib,secrets,re,html,gzip,time,os
+import urllib.request,urllib.parse,urllib.error,json,subprocess,shutil,hashlib,secrets,re,html,gzip,time,os
 from pathlib import Path
 from .config import DATA
 from .model import Track
+from .redact import redact_text
 
 def _published_meta(x):
  """Return stable publication metadata without forcing an extra network request."""
@@ -32,15 +33,48 @@ def _json(url,timeout=8):
  req=urllib.request.Request(url,headers={'User-Agent':f'NPLAY/{__version__} (+terminal audio player)'})
  with urllib.request.urlopen(req,timeout=timeout) as r:return json.load(r)
 
+NAVIDROME_REMEDY='check the URL and password in Settings → Navidrome'
+
+class NavidromeError(RuntimeError):
+ """A user-facing Navidrome failure. Its text never contains a URL or credential."""
+ def __init__(self,what,status=None,detail='',remedy=NAVIDROME_REMEDY):
+  self.status=status;self.remedy=remedy
+  parts=[what+(f' (HTTP {status})' if status else '')]
+  if detail:parts.append(redact_text(detail)[:160])
+  if remedy:parts.append(remedy)
+  super().__init__(' · '.join(parts))
+
+# Subsonic error codes that mean "fix the configuration" rather than "retry later".
+_SUBSONIC_AUTH={10,20,30,40,41,42,43,44,50}
+
 class Navidrome:
  def __init__(self,url,user,password,bitrate=0):self.url=url.rstrip('/');self.user=user;self.password=password;self.bitrate=bitrate
  def params(self):
   salt=secrets.token_hex(6);token=hashlib.md5((self.password+salt).encode()).hexdigest();return {'u':self.user,'t':token,'s':salt,'v':'1.16.1','c':'nplay','f':'json'}
  def call(self,m,x=None):
   q={**self.params(),**(x or {})};u=f'{self.url}/rest/{m}.view?'+urllib.parse.urlencode(q)
-  d=_json(u).get('subsonic-response',{})
-  if d.get('status')!='ok':raise RuntimeError(d.get('error',{}).get('message','Navidrome/Subsonic error'))
+  try:d=_json(u).get('subsonic-response',{})
+  except urllib.error.HTTPError as e:
+   raise NavidromeError('Navidrome request failed',e.code) from None
+  except urllib.error.URLError as e:
+   raise NavidromeError('Navidrome is unreachable',detail=str(getattr(e,'reason','') or '')) from None
+  except (TimeoutError,OSError) as e:
+   raise NavidromeError('Navidrome is unreachable',detail=type(e).__name__) from None
+  except ValueError:
+   raise NavidromeError('Navidrome returned an invalid response') from None
+  if d.get('status')!='ok':
+   err=d.get('error',{}) or {};code=err.get('code')
+   msg=str(err.get('message') or 'Navidrome/Subsonic error')
+   if code in _SUBSONIC_AUTH:raise NavidromeError('Navidrome authentication failed',detail=msg)
+   raise NavidromeError('Navidrome error',detail=msg,remedy='')
   return d
+ def stream_status(self,url,timeout=6):
+  """Probe a failed stream URL and return its HTTP status (None if unreachable)."""
+  try:
+   req=urllib.request.Request(url,headers={'User-Agent':f'NPLAY/{__version__}','Range':'bytes=0-0'})
+   with urllib.request.urlopen(req,timeout=timeout) as r:return r.status
+  except urllib.error.HTTPError as e:return e.code
+  except Exception:return None
  def ping(self):self.call('ping');return True
  def stats(self):
   d=self.call('getIndexes'); return {'version': d.get('version','Subsonic-compatible')}

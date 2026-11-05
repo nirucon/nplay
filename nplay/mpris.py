@@ -1,5 +1,6 @@
 """Optional MPRIS2 bridge. Event-driven when dbus-python/GLib are available."""
 import threading,time
+from .redact import contains_secret
 class MPRIS:
  def __init__(self,app):
   self.app=app;self.available=False;self.external=False;self.reason='';self._player=None;self._loop=None;self._thread=None;self._started=threading.Event()
@@ -24,7 +25,7 @@ class MPRIS:
     self.available=True;self.external=True;self.reason='another NPLAY instance owns MPRIS';self._started.set();return True
   except Exception as e:
    self.reason='D-Bus session unavailable: '+str(e);return False
-  app=self.app
+  app=self.app;mpris_ref=self
   class Service(dbus.service.Object):
    def __init__(self):
     DBusGMainLoop(set_as_default=True);self.bus=dbus.SessionBus();self.name=dbus.service.BusName('org.mpris.MediaPlayer2.nplay',bus=self.bus,do_not_queue=True);super().__init__(self.name,'/org/mpris/MediaPlayer2')
@@ -74,10 +75,14 @@ class MPRIS:
      if t.kind!='radio':meta['mpris:length']=dbus.Int64(int((app.playback.duration() or t.duration or 0)*1000000))
      art=''
      try:
-      if app.ui and t.cover:
-       p=app.ui.art.cached(t.cover);art=('file://'+str(p)) if p else t.cover
-      else:art=t.cover
+      cache=app.ui.art if app.ui else app.artwork_cache
+      p=cache.cached(t.cover) if t.cover else None
+      art=('file://'+str(p)) if p else t.cover
      except Exception:art=t.cover
+     # A credential-bearing cover URL (Navidrome) is never published on D-Bus;
+     # it is fetched into the private cache and announced as a file:// URL.
+     if art and contains_secret(art):
+      art='';mpris_ref._fetch_art(t.cover)
      if art:meta['mpris:artUrl']=art if str(art).startswith(('file://','http://','https://')) else 'file://'+str(art)
     return {'PlaybackStatus':'Playing' if app.playback.active() else ('Paused' if t and app.playback_state.get('state')!='stopped' else 'Stopped'),'LoopStatus':{'track':'Track','context':'Playlist'}.get(app.repeat_mode,'None'),'Rate':dbus.Double(1.0),'Shuffle':dbus.Boolean(app.shuffle_mode!='off'),'Metadata':dbus.Dictionary(meta,signature='sv'),'Volume':dbus.Double(max(0,min(1.5,app.volume/100))),'Position':dbus.Int64(int(app.playback.position()*1000000)),'MinimumRate':dbus.Double(1.0),'MaximumRate':dbus.Double(1.0),'CanGoNext':dbus.Boolean(bool(app.queue or (t and t.kind!='radio' and app.play_context and (app.context_index+1<len(app.play_context) or app.repeat_mode=='context')))),'CanGoPrevious':dbus.Boolean(bool(app.current and (app.playback.position()>3 or app.back_stack or app.context_index>0))),'CanPlay':dbus.Boolean(True),'CanPause':dbus.Boolean(True),'CanSeek':dbus.Boolean(bool(t and t.seekable)),'CanControl':dbus.Boolean(True)}
    def emit_changed(self,names):
@@ -93,6 +98,14 @@ class MPRIS:
   # the worker thread. Wait briefly for a definitive state.
   self._started.wait(1.0)
   return self.available
+ def _fetch_art(self,url):
+  if getattr(self,'_art_pending',None)==url:return
+  self._art_pending=url
+  def work():
+   try:
+    if self.app.artwork_cache.fetch(url,timeout=8):self.changed('Metadata')
+   except Exception:pass
+  threading.Thread(target=work,daemon=True,name='nplay-mpris-art').start()
  def changed(self,*names):
   if not self.available or not self._player:return
   try:

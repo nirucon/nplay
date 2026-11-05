@@ -16,12 +16,31 @@ import wave
 
 
 socket_path = None
+log_path = None
 url = ""
 for arg in sys.argv[1:]:
     if arg.startswith("--input-ipc-server="):
         socket_path = arg.split("=", 1)[1]
+    elif arg.startswith("--log-file="):
+        log_path = arg.split("=", 1)[1]
     elif not arg.startswith("-"):
         url = arg
+log_file = None
+if log_path:
+    try:
+        log_file = open(log_path, "a", buffering=1)
+    except OSError:
+        log_file = None
+
+
+def mpv_log(text):
+    # Like real mpv, the fake logs loaded URLs verbatim (tests assert NPLAY
+    # redacts them before they reach disk).
+    if log_file:
+        try:
+            log_file.write(text + "\n")
+        except OSError:
+            pass
 if not socket_path:
     sys.exit("fake-mpv: --input-ipc-server is required")
 
@@ -84,7 +103,7 @@ def handle(command):
             if key == "volume":
                 return state["volume"]
             if key == "idle-active":
-                return False
+                return not state["path"]
             if key == "core-idle":
                 return False
             if key == "path":
@@ -108,6 +127,15 @@ def handle(command):
         elif key == "mute":
             with lock:
                 state["mute"] = bool(value)
+        return None
+    if name == "loadfile" and args:
+        mpv_log(f'[cplayer] Run command: loadfile, args=[url="{args[0]}"]')
+        with lock:
+            state["path"] = str(args[0])
+            state["duration"] = wav_duration(state["path"])
+            state["position"] = 0.0
+            state["started"] = time.monotonic()
+        threading.Timer(0.1, lambda: broadcast("file-loaded")).start()
         return None
     if name == "cycle" and args and args[0] == "pause":
         set_pause(not state["pause"])
@@ -203,7 +231,10 @@ def main():
 
     signal.signal(signal.SIGTERM, term)
     signal.signal(signal.SIGINT, term)
-    threading.Timer(0.25, lambda: broadcast("file-loaded")).start()
+    if url:
+        # Legacy callers pass the media in argv; NPLAY >= 1.8 uses loadfile.
+        mpv_log(f"[cplayer] Opening {url}")
+        threading.Timer(0.25, lambda: broadcast("file-loaded")).start()
     while not stop.is_set():
         try:
             conn, _ = server.accept()

@@ -28,6 +28,7 @@ from ..service.protocol import (
 )
 from ..visualizer import Visualizer
 from ..logging_utils import LOG_PATH, logger
+from ..redact import redact_text
 
 log = logger()
 
@@ -85,10 +86,10 @@ class ServiceUI:
             log.exception("service UI callback failed")
 
     def status(self, message, *args):
-        log.info("service status: %s", message)
+        log.info("service status: %s", redact_text(message))
 
     def error(self, title, message=""):
-        log.warning("service error: %s · %s", title, message)
+        log.warning("service error: %s · %s", redact_text(title), redact_text(message))
 
     def invalidate(self):
         pass
@@ -836,9 +837,9 @@ class ServiceBackend:
                     try:
                         items = futures[key].result(timeout=30)
                     except Exception as e:
-                        log.warning("service search %s failed: %s", key, e)
+                        log.warning("service search %s failed: %s", key, redact_text(e))
                         items = []
-                        error = str(e)[:200]
+                        error = redact_text(e)[:200]
                     else:
                         error = ""
                     self._remember_many(items)
@@ -987,7 +988,7 @@ class ServiceBackend:
         except RpcError:
             raise
         except Exception as e:
-            raise BackendError("artwork unavailable", {"detail": str(e)[:200]})
+            raise BackendError("artwork unavailable", {"detail": redact_text(e)[:200]})
         if not data:
             return {"mime": "", "data": "", "empty": True}
         mime = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
@@ -1098,7 +1099,7 @@ class ServiceBackend:
         try:
             probe.ping()
         except Exception as e:
-            raise BackendError("Navidrome connection failed", {"detail": str(e)[:200]})
+            raise BackendError("Navidrome connection failed", {"detail": redact_text(e)[:200], "remedy": "check the URL and password in Settings → Navidrome"})
         self.app.cfg.save_nav(url, user, password)
         self.touch("settings")
         return {"configured": True, "url": url, "user": user}
