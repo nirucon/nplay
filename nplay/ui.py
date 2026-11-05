@@ -59,7 +59,13 @@ class UI(RenderingMixin):
  def loading(self,title,msg,items=None):self.mode='list';self.title=title;self.items=list(items or []);self.sel=0;self.empty=msg;self.message=msg;self._view_changed()
  def show_empty(self,title,msg):self.replace_list(title,[],empty=msg,message=msg)
  def error(self,title,msg):self.mode='error';self.title=title;self.empty=msg;self.message=msg;self._view_changed()
- def show_diagnostics(self):self.push();self.mode='diagnostics';self._view_changed()
+ def show_diagnostics(self):
+  # One read-only query when the view opens (no polling); hidden elsewhere.
+  try:
+   from .service.probe import vis_line
+   self.vis_diag=vis_line(bool(self.visual and self.viz.running))
+  except Exception:self.vis_diag='VIS: CAVA, unknown'
+  self.push();self.mode='diagnostics';self._view_changed()
  def show_about(self):self.push();self.mode='about';self.title='ABOUT';self.items=[];self.sel=0;self._view_changed()
  def selected(self):
   if not self.items:return None

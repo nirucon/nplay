@@ -182,6 +182,18 @@ class VisualizationStreamTests(unittest.TestCase):
                 time.sleep(0.05)
             self.assertFalse(cfg.exists(), "CAVA config must be removed when CAVA stops")
 
+    def test_diagnostics_vis_line(self):
+        from nplay.service.probe import vis_line
+        with Wire(self.svc.sock_path) as w:
+            w.request(1, "initialize", {"protocol_versions": [1]})
+            self.assertTrue(vis_line(False, path=self.svc.sock_path).startswith("VIS: CAVA, 0 subscribers"))
+            w.request(2, "visualization.subscribe", {"bars": 8})
+            line = vis_line(True, path=self.svc.sock_path)
+            self.assertTrue(line.startswith("VIS: CAVA, 1 subscriber ·"), line)
+            self.assertIn("service running", line)
+        missing = Path(self.tmp.name) / "none.sock"
+        self.assertIn("service not running", vis_line(False, path=missing))
+
 
 if __name__ == "__main__":
     unittest.main()
