@@ -1,6 +1,9 @@
 import subprocess,tempfile,threading,shutil,os,time
 class Visualizer:
- def __init__(self,bars=48):self.bars=bars;self.values=[0]*bars;self.proc=None;self.path=None;self.running=False
+ def __init__(self,bars=48,on_frame=None,on_exit=None):
+  # on_frame(vis,values) runs on the reader thread for every CAVA frame, so a
+  # push consumer needs no timer of its own; on_exit(vis) runs when CAVA ends.
+  self.bars=bars;self.values=[0]*bars;self.proc=None;self.path=None;self.running=False;self.on_frame=on_frame;self.on_exit=on_exit
  def start(self):
   if not shutil.which('cava'):return False
   if self.proc is not None and self.proc.poll() is None and self.running:return True
@@ -10,16 +13,23 @@ class Visualizer:
    self.proc=None
   cfg=f'''[general]\nbars = {self.bars}\nframerate = 30\n[output]\nmethod = raw\nraw_target = /dev/stdout\ndata_format = binary\nbit_format = 8bit\nchannels = mono\n[smoothing]\nnoise_reduction = 77\n'''
   f=tempfile.NamedTemporaryFile('w',delete=False,prefix='nplay-cava-',suffix='.conf');f.write(cfg);f.close();self.path=f.name
-  try:self.proc=subprocess.Popen(['cava','-p',self.path],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL);self.running=True;threading.Thread(target=self._read,daemon=True).start();return True
+  try:self.proc=subprocess.Popen(['cava','-p',self.path],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL);self.running=True;threading.Thread(target=self._read,args=(self.proc,),daemon=True,name='nplay-cava').start();return True
   except Exception:self.stop();return False
- def _read(self):
+ def _read(self,proc):
   try:
-   while self.running and self.proc and self.proc.stdout:
-    d=self.proc.stdout.read(self.bars)
-    if len(d)==self.bars:self.values=list(d)
+   while self.running and proc.stdout:
+    d=proc.stdout.read(self.bars)
+    if len(d)==self.bars:
+     self.values=list(d)
+     if self.on_frame:
+      try:self.on_frame(self,self.values)
+      except Exception:pass
     else:break
   finally:
-   self.running=False
+   if proc is self.proc:self.running=False
+   if self.on_exit:
+    try:self.on_exit(self)
+    except Exception:pass
  def get(self,n):
   vals=self.values
   if n<=0:return []

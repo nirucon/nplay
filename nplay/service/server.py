@@ -31,6 +31,9 @@ log = logger()
 
 MAX_CLIENT_QUEUE = 256
 MAX_OUTSTANDING = 8
+# Pushed visualization frames beyond this backlog are dropped, so a stalled
+# client can never fill the queue and lose responses.
+MAX_FRAME_BACKLOG = 8
 
 
 class Client:
@@ -60,6 +63,16 @@ class Client:
             if droppable:
                 return False
             self.close()
+            return False
+
+    def send_frame(self, obj):
+        """Queue one pushed visualization frame; dropped (never fatal) when the client lags."""
+        if not self.alive or self.queue.qsize() >= MAX_FRAME_BACKLOG:
+            return False
+        try:
+            self.queue.put_nowait(obj)
+            return True
+        except Full:
             return False
 
     def _write(self):
@@ -136,9 +149,15 @@ class Client:
                 result = {"ok": True}
             elif method == "service.shutdown":
                 result = {"ok": True, "pid": os.getpid()}
+            elif method == "visualization.subscribe":
+                result = self.server.backend.visualization_subscribe(params, client=self, sink=self.send_frame)
+            elif method == "visualization.unsubscribe":
+                result = self.server.backend.visualization_unsubscribe(params, client=self)
             else:
                 result = self.server.backend.dispatch(method, params)
             self.send(response(req_id, result))
+            if method == "visualization.subscribe":
+                self.server.backend.visualization_activate(self)
         except RpcError as e:
             self.send(error_response(req_id, e))
         except (ValueError, KeyError, TypeError) as e:
@@ -193,6 +212,12 @@ class ControlServer:
             c.send({"jsonrpc": "2.0", "method": method, "params": params}, droppable=True)
 
     def client_gone(self, client):
+        gone = getattr(self.backend, "visualization_client_gone", None)
+        if gone:
+            try:
+                gone(client)
+            except Exception:
+                log.debug("visualization unsubscribe on disconnect failed", exc_info=True)
         with self.clients_lock:
             self.clients.discard(client)
             if not self.clients:

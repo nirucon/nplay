@@ -145,6 +145,10 @@ class ServiceBackend:
         self._vis = None
         self._vis_lock = threading.Lock()
         self._vis_last = 0.0
+        self._vis_subs = {}
+        self._vis_failures = 0
+        self._vis_restart = None
+        self._vis_wake = threading.Event()
         self._vis_stop = threading.Event()
         self._vis_monitor = threading.Thread(target=self._vis_monitor_loop, daemon=True, name="nplay-visualizer-idle")
         self._vis_monitor.start()
@@ -1002,47 +1006,198 @@ class ServiceBackend:
         return {"mime": mime, "data": base64.b64encode(data).decode("ascii")}
 
     # -- visualization ---------------------------------------------------
-    def visualization_start(self, p):
+    # Two ways to get spectrum frames:
+    #  * visualization.data (protocol 1.0): request/response per frame (polling).
+    #  * visualization.subscribe (protocol 1.1): the service pushes compact
+    #    frames from CAVA's own frame clock to the subscribed connection, skips
+    #    frames identical to the last one sent (silence), and ends the stream on
+    #    unsubscribe or disconnect.
+    # CAVA runs only while someone wants frames: it stops as soon as there are
+    # no subscribers and no data request within VIS_DATA_RECENT seconds, and
+    # the idle monitor stops a poll-only CAVA after VIS_DATA_IDLE seconds.
+    VIS_DATA_RECENT = 2.0
+    VIS_DATA_IDLE = 15.0
+
+    def _vis_new(self):
+        return Visualizer(on_frame=self._on_vis_frame, on_exit=self._on_vis_exit)
+
+    def _vis_ensure_locked(self):
         if not shutil.which("cava"):
             raise BackendError("CAVA is not installed", {"remedy": "Install cava to enable visualization"})
-        with self._vis_lock:
-            if self._vis is None:
-                self._vis = Visualizer()
-            if not self._vis.running and not self._vis.start():
+        if self._vis is None:
+            self._vis = self._vis_new()
+        if not self._vis.running:
+            if not self._vis.start():
                 raise BackendError("CAVA could not start", {"remedy": "Check the PipeWire/PulseAudio monitor source and restart cava"})
+            self._vis_wake.set()
+            return True
+        return False
+
+    def _vis_stop_locked(self):
+        if self._vis:
+            self._vis.stop()
+            self._vis = None
+        if self._vis_restart:
+            self._vis_restart.cancel()
+            self._vis_restart = None
+
+    def _vis_maybe_stop_locked(self):
+        if not self._vis_subs and self._vis and time.monotonic() - self._vis_last > self.VIS_DATA_RECENT:
+            self._vis_stop_locked()
+
+    def visualization_start(self, p):
+        with self._vis_lock:
+            self._vis_ensure_locked()
             self._vis_last = time.monotonic()
             return {"available": True, "bars": self._vis.bars}
 
     def visualization_stop(self, p):
         with self._vis_lock:
-            if self._vis:
-                self._vis.stop()
-                self._vis = None
+            # Never cut a push stream another connection is consuming.
+            if not self._vis_subs:
+                self._vis_stop_locked()
             return {"available": True}
 
     def visualization_data(self, p):
         bars = max(8, min(96, int(p.get("bars") or 32)))
         with self._vis_lock:
-            if self._vis is None:
-                self._vis = Visualizer()
-            if not self._vis.running:
+            if self._vis is not None and not self._vis.running:
                 # CAVA can exit when the audio server or monitor source is not
                 # ready yet. Recover on the next visualizer frame instead of
                 # leaving the GUI stuck on "unavailable".
-                if not self._vis.start():
-                    raise BackendError("CAVA could not start", {"remedy": "Check the PipeWire/PulseAudio monitor source and restart cava"})
                 log.info("service restarted CAVA after an unexpected exit")
+            self._vis_ensure_locked()
             self._vis_last = time.monotonic()
             return {"bars": [int(x) for x in self._vis.get(bars)]}
 
+    def visualization_subscribe(self, p, client=None, sink=None):
+        if client is None or sink is None:
+            raise BackendError("visualization.subscribe needs a streaming connection")
+        bars = max(8, min(96, int(p.get("bars") or 32)))
+        fps = max(1, min(30, int(p.get("fps") or 30)))
+        encoding = str(p.get("encoding") or "json")
+        if encoding not in ("json", "b64"):
+            raise ParamsError("encoding must be json or b64")
+        with self._vis_lock:
+            self._vis_ensure_locked()
+            self._vis_subs[client] = {
+                "sink": sink, "bars": bars, "fps": fps, "encoding": encoding,
+                # 20 % tolerance so fps=30 accepts every CAVA frame despite jitter.
+                "interval": 0.8 / fps, "last_t": 0.0, "last": None,
+                "active": False, "pushed": 0, "suppressed": 0, "dropped": 0,
+            }
+            return {"subscribed": True, "bars": bars, "fps": fps, "encoding": encoding, "source": "cava"}
+
+    def visualization_activate(self, client):
+        """Start pushing once the subscribe response is queued (frames never precede it)."""
+        with self._vis_lock:
+            sub = self._vis_subs.get(client)
+            if sub:
+                sub["active"] = True
+
+    def visualization_unsubscribe(self, p, client=None):
+        with self._vis_lock:
+            was = self._vis_subs.pop(client, None) is not None
+            self._vis_maybe_stop_locked()
+        return {"subscribed": False, "was_subscribed": was}
+
+    def visualization_client_gone(self, client):
+        with self._vis_lock:
+            if self._vis_subs.pop(client, None) is not None:
+                self._vis_maybe_stop_locked()
+
+    @staticmethod
+    def _resample(vals, n):
+        if not vals:
+            return [0] * n
+        if len(vals) == n:
+            return list(vals)
+        m = len(vals)
+        return [vals[min(m - 1, int(i * m / n))] for i in range(n)]
+
+    def _on_vis_frame(self, vis, values):
+        """Called on CAVA's reader thread for every frame (CAVA's 30 fps clock)."""
+        if vis is not self._vis:
+            return
+        subs = [s for s in list(self._vis_subs.values()) if s["active"]]
+        if not subs:
+            return
+        self._vis_failures = 0
+        now = time.monotonic()
+        for s in subs:
+            if now - s["last_t"] < s["interval"]:
+                continue
+            frame = self._resample(values, s["bars"])
+            if frame == s["last"]:
+                s["suppressed"] += 1
+                continue
+            if s["encoding"] == "b64":
+                payload = {"vis": base64.b64encode(bytes(frame)).decode("ascii"), "enc": "b64"}
+            else:
+                payload = {"vis": frame}
+            if s["sink"](payload):
+                s["last"] = frame
+                s["last_t"] = now
+                s["pushed"] += 1
+            else:
+                s["dropped"] += 1
+
+    def _on_vis_exit(self, vis):
+        """CAVA ended. If it was not stopped on purpose and subscribers remain, retry with backoff."""
+        with self._vis_lock:
+            if vis is self._vis:
+                self._vis_schedule_restart_locked()
+
+    def _vis_schedule_restart_locked(self):
+        if not self._vis_subs or self._vis_stop.is_set():
+            return
+        self._vis_failures = min(6, self._vis_failures + 1)
+        delay = min(30.0, 2.0 ** (self._vis_failures - 1))
+        log.info("CAVA exited with %d subscriber(s); restarting in %.0fs", len(self._vis_subs), delay)
+        if self._vis_restart:
+            self._vis_restart.cancel()
+        self._vis_restart = threading.Timer(delay, self._vis_retry)
+        self._vis_restart.daemon = True
+        self._vis_restart.start()
+
+    def _vis_retry(self):
+        with self._vis_lock:
+            self._vis_restart = None
+            if not self._vis_subs or self._vis_stop.is_set():
+                return
+            if self._vis is not None and self._vis.running:
+                return
+            self._vis = self._vis_new()
+            if not self._vis.start():
+                self._vis_schedule_restart_locked()
+
+    def visualization_status(self):
+        with self._vis_lock:
+            subs = list(self._vis_subs.values())
+            return {
+                "running": bool(self._vis and self._vis.running),
+                "source": "cava",
+                "subscribers": len(subs),
+                "pushed": sum(s["pushed"] for s in subs),
+                "suppressed": sum(s["suppressed"] for s in subs),
+                "dropped": sum(s["dropped"] for s in subs),
+                "polled_recently": bool(self._vis and time.monotonic() - self._vis_last <= self.VIS_DATA_IDLE),
+            }
+
     def _visualization_idle(self):
         with self._vis_lock:
-            if self._vis and time.monotonic() - self._vis_last > 15:
-                self._vis.stop()
-                self._vis = None
+            if self._vis and not self._vis_subs and time.monotonic() - self._vis_last > self.VIS_DATA_IDLE:
+                self._vis_stop_locked()
 
     def _vis_monitor_loop(self):
-        while not self._vis_stop.wait(5.0):
+        # Sleeps on an event while CAVA is off: no periodic wakeup when idle.
+        while not self._vis_stop.is_set():
+            if self._vis is None:
+                self._vis_wake.wait()
+                self._vis_wake.clear()
+                continue
+            if self._vis_stop.wait(5.0):
+                break
             try:
                 self._visualization_idle()
             except Exception:
@@ -1218,12 +1373,15 @@ class ServiceBackend:
 
     def close(self):
         self._vis_stop.set()
+        self._vis_wake.set()
         try:
             self._executor.shutdown(wait=False, cancel_futures=True)
         except Exception:
             pass
         try:
-            self.visualization_stop({})
+            with self._vis_lock:
+                self._vis_subs.clear()
+                self._vis_stop_locked()
         except Exception:
             pass
         try:
@@ -1291,6 +1449,9 @@ class ServiceBackend:
             "visualization.start": self.visualization_start,
             "visualization.stop": self.visualization_stop,
             "visualization.data": self.visualization_data,
+            "visualization.subscribe": self.visualization_subscribe,
+            "visualization.unsubscribe": self.visualization_unsubscribe,
+            "visualization.status": lambda p: self.visualization_status(),
             "settings.get": self.settings_get,
             "settings.set": self.settings_set,
             "navidrome.setup": self.navidrome_setup,
