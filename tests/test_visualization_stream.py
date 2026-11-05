@@ -164,6 +164,24 @@ class VisualizationStreamTests(unittest.TestCase):
             self.assertTrue(st["running"])
             self.assertTrue(st["polled_recently"])
 
+    def test_cava_config_is_private_and_removed(self):
+        with Wire(self.svc.sock_path) as w:
+            w.request(1, "initialize", {"protocol_versions": [1]})
+            w.request(2, "visualization.subscribe", {"bars": 16})
+            self.frames(w, 0.3)
+            pid_s, cfg = self.cava_starts()[-1]
+            cfg = Path(cfg)
+            self.assertFalse(str(cfg).startswith(tempfile.gettempdir() + "/nplay-cava-"))
+            self.assertEqual(cfg.parent, Path(self.tmp.name) / "run" / "nplay")
+            self.assertEqual(cfg.parent.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(cfg.stat().st_mode & 0o777, 0o600)
+            w.request(3, "visualization.unsubscribe")
+            self.assertTrue(self.wait_cava_stopped(int(pid_s)))
+            deadline = time.monotonic() + 2
+            while cfg.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertFalse(cfg.exists(), "CAVA config must be removed when CAVA stops")
+
 
 if __name__ == "__main__":
     unittest.main()

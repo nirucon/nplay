@@ -1,4 +1,5 @@
 import subprocess,tempfile,threading,shutil,os,time
+from .config import private_runtime_dir
 class Visualizer:
  def __init__(self,bars=48,on_frame=None,on_exit=None):
   # on_frame(vis,values) runs on the reader thread for every CAVA frame, so a
@@ -12,7 +13,10 @@ class Visualizer:
    except Exception:pass
    self.proc=None
   cfg=f'''[general]\nbars = {self.bars}\nframerate = 30\n[output]\nmethod = raw\nraw_target = /dev/stdout\ndata_format = binary\nbit_format = 8bit\nchannels = mono\n[smoothing]\nnoise_reduction = 77\n'''
-  f=tempfile.NamedTemporaryFile('w',delete=False,prefix='nplay-cava-',suffix='.conf');f.write(cfg);f.close();self.path=f.name
+  # Private 0700 runtime directory ($XDG_RUNTIME_DIR/nplay), never shared /tmp.
+  self._remove_config()
+  fd,self.path=tempfile.mkstemp(prefix='cava-',suffix='.conf',dir=str(private_runtime_dir()))
+  with os.fdopen(fd,'w') as f:f.write(cfg)
   try:self.proc=subprocess.Popen(['cava','-p',self.path],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL);self.running=True;threading.Thread(target=self._read,args=(self.proc,),daemon=True,name='nplay-cava').start();return True
   except Exception:self.stop();return False
  def _read(self,proc):
@@ -26,7 +30,10 @@ class Visualizer:
       except Exception:pass
     else:break
   finally:
-   if proc is self.proc:self.running=False
+   if proc is self.proc:
+    self.running=False
+    # CAVA has read its config at start-up; remove it as soon as CAVA ends.
+    self._remove_config()
    if self.on_exit:
     try:self.on_exit(self)
     except Exception:pass
@@ -41,6 +48,9 @@ class Visualizer:
    try:self.proc.terminate();self.proc.wait(timeout=.3)
    except Exception:pass
   self.proc=None
-  if self.path:
-   try:os.unlink(self.path)
-   except Exception:pass
+  self._remove_config()
+ def _remove_config(self):
+  path,self.path=self.path,None
+  if path:
+   try:os.unlink(path)
+   except OSError:pass
