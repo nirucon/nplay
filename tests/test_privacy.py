@@ -60,6 +60,8 @@ class RedactionTable(unittest.TestCase):
                     self.assertIn("REDACTED", out)
                 # Non-secret identifiers stay for diagnosis.
                 self.assertIn(url.split("?")[0], redact_url(url))
+                self.assertNotIn("?u=", redact_url(url))
+                self.assertNotIn("&u=", redact_text(url))
 
     def test_non_secret_urls_unchanged(self):
         for url in ("https://www.youtube.com/watch?v=abc", "/home/u/Music/a.flac",
@@ -153,6 +155,8 @@ class SimulatedNavidromePlay(unittest.TestCase):
         for v in values:
             self.assertNotIn(v, files)
         self.assertFalse(contains_secret(files))
+        # The rollout gate: `grep -c 'stream.view?u=' *.log` must be 0.
+        self.assertNotIn("stream.view?u=", files)
         for p in (LOG_PATH, STATE / "mpv.log"):
             self.assertEqual(stat.S_IMODE(os.stat(p).st_mode), 0o600, p)
         self.assertEqual(stat.S_IMODE(os.stat(STATE).st_mode), 0o700)
@@ -177,7 +181,8 @@ class LogMigration(unittest.TestCase):
             self.assertNotIn("a1b2c3d4e5f6", out)
             self.assertNotIn("c9f0f895fb98ab9159f51fd0297e236d", out)
             self.assertIn("mpv ready request=1 source=navidrome track=1", out)
-            self.assertIn("u=niru&t=REDACTED&s=REDACTED&v=1.16.1", out)
+            self.assertIn("stream.view?v=1.16.1&c=nplay&f=json&id=1&auth=REDACTED", out)
+            self.assertNotIn("stream.view?u=", out)
             self.assertIn("\udcff", out)
             self.assertEqual(len(out.splitlines()), 4)
             self.assertEqual(stat.S_IMODE(os.stat(p).st_mode), 0o600)

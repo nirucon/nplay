@@ -42,7 +42,7 @@ The installer replaces only the application code. Configuration, XDG state and `
 NPLAY 1.8.0 keeps credentials out of process arguments and logs. mpv receives
 media URLs over its private IPC socket instead of on its command line, every
 log line and mpv's own log are redacted (`t`, `s`, `p`, `token`, `apiKey`,
-`access_token` query values become `REDACTED`), log files are created `0600`
+`access_token` query values and the Subsonic user name are removed and replaced by `auth=REDACTED`), log files are created `0600`
 and the state directory `0700`. On the first start after the upgrade (and at
 every later start, idempotently) NPLAY redacts existing `nplay.log`, its
 rotations and `mpv.log` in place; no unredacted copy is kept. The mpv IPC
