@@ -5,11 +5,12 @@ import os
 import signal
 import socket
 import stat
+import struct
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from queue import Empty, Full, Queue
+from queue import Full, Queue
 
 from ..logging_utils import logger
 from ..redact import redact_text
@@ -35,6 +36,8 @@ MAX_OUTSTANDING = 8
 # Pushed visualization frames beyond this backlog are dropped, so a stalled
 # client can never fill the queue and lose responses.
 MAX_FRAME_BACKLOG = 8
+SEND_TIMEOUT = 5
+_CLOSE = object()
 
 
 class Client:
@@ -51,6 +54,14 @@ class Client:
         self.writer = threading.Thread(target=self._write, daemon=True, name="nplay-client-write")
 
     def start(self):
+        # The socket stays blocking for reads; a stalled peer can block a
+        # write for at most SEND_TIMEOUT seconds (SO_SNDTIMEO), then the
+        # connection is closed.
+        self.sock.settimeout(None)
+        try:
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDTIMEO, struct.pack("ll", SEND_TIMEOUT, 0))
+        except (OSError, struct.error):
+            self.sock.settimeout(float(SEND_TIMEOUT))
         self.writer.start()
         self.reader.start()
 
@@ -77,14 +88,14 @@ class Client:
             return False
 
     def _write(self):
+        # Blocks on the queue: an idle connection costs no wakeups. close()
+        # wakes the writer with a sentinel.
         while self.alive:
-            try:
-                obj = self.queue.get(timeout=0.5)
-            except Empty:
-                continue
+            obj = self.queue.get()
+            if obj is _CLOSE or not self.alive:
+                return
             try:
                 with self.write_lock:
-                    self.sock.settimeout(5.0)
                     self.sock.sendall(encode(obj))
             except Exception:
                 self.close()
@@ -93,20 +104,17 @@ class Client:
     def send_sync(self, obj):
         try:
             with self.write_lock:
-                self.sock.settimeout(5.0)
                 self.sock.sendall(encode(obj))
             return True
         except Exception:
             return False
 
     def _read(self):
+        # Blocking recv: close() (shutdown) or the peer ends it; no idle polling.
         buf = b""
-        self.sock.settimeout(0.5)
         while self.alive:
             try:
                 chunk = self.sock.recv(65536)
-            except socket.timeout:
-                continue
             except OSError:
                 break
             if not chunk:
@@ -184,6 +192,10 @@ class Client:
             self.sock.close()
         except OSError:
             pass
+        try:
+            self.queue.put_nowait(_CLOSE)
+        except Full:
+            pass
         self.server.client_gone(self)
 
 
@@ -196,7 +208,9 @@ class ControlServer:
         self.backend.notify = self.broadcast
         self.executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="nplay-rpc-worker")
         self.clients = set()
-        self.clients_lock = threading.Lock()
+        # RLock: request_stop() may run in a signal handler on the main thread.
+        self.clients_lock = threading.RLock()
+        self.clients_changed = threading.Condition(self.clients_lock)
         self.stop_event = threading.Event()
         self.listener = None
         self.lock_file = None
@@ -223,10 +237,20 @@ class ControlServer:
             self.clients.discard(client)
             if not self.clients:
                 self.last_client = time.monotonic()
+            self.clients_changed.notify_all()
 
     def request_stop(self, reason="stopped"):
         self.reason = reason
         self.stop_event.set()
+        with self.clients_lock:
+            self.clients_changed.notify_all()
+        # Wake the blocking accept() (Linux returns EINVAL after shutdown).
+        listener = self.listener
+        if listener is not None:
+            try:
+                listener.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
 
     def _prepare(self):
         parent = self.path.parent
@@ -288,38 +312,47 @@ class ControlServer:
         s.bind(str(self.path))
         os.chmod(self.path, 0o600)
         s.listen(16)
-        s.settimeout(0.5)
+        s.settimeout(None)
         self.listener = s
         log.info("nplay service listening path=%s protocol=%s.%s pid=%s", self.path, PROTOCOL_VERSION, PROTOCOL_MINOR, os.getpid())
 
     def _idle_loop(self):
-        while not self.stop_event.wait(0.5):
-            if not self.idle_exit:
-                continue
-            with self.clients_lock:
-                empty = not self.clients
-            if empty and time.monotonic() - self.last_client >= self.idle_exit:
-                self.request_stop("idle exit")
+        # Sleeps until a client leaves or the idle deadline: no periodic wakeups.
+        with self.clients_lock:
+            while not self.stop_event.is_set():
+                if self.clients:
+                    self.clients_changed.wait()
+                    continue
+                remaining = self.idle_exit - (time.monotonic() - self.last_client)
+                if remaining <= 0:
+                    break
+                self.clients_changed.wait(remaining)
+            else:
                 return
+        self.request_stop("idle exit")
 
     def run(self, prestarted=False):
         if not prestarted:
             self.start()
-        threading.Thread(target=self._idle_loop, daemon=True, name="nplay-idle").start()
+        if self.idle_exit:
+            threading.Thread(target=self._idle_loop, daemon=True, name="nplay-idle").start()
         try:
             while not self.stop_event.is_set():
                 try:
                     conn, _ = self.listener.accept()
-                except socket.timeout:
-                    continue
                 except OSError:
                     if self.stop_event.is_set():
                         break
+                    time.sleep(0.05)
                     continue
+                if self.stop_event.is_set():
+                    conn.close()
+                    break
                 client = Client(conn, self)
                 with self.clients_lock:
                     self.clients.add(client)
                     self.had_client = True
+                    self.clients_changed.notify_all()
                 client.start()
         finally:
             self.shutdown()
@@ -330,7 +363,6 @@ class ControlServer:
             return
         self._shutdown_done = True
         self.stop_event.set()
-        time.sleep(0.2)
         try:
             if self.listener:
                 self.listener.close()
@@ -338,6 +370,18 @@ class ControlServer:
             pass
         with self.clients_lock:
             clients = list(self.clients)
+        # Let queued responses (e.g. the service.shutdown reply) flush: each
+        # writer drains its queue up to the sentinel, bounded at 0.5 s total
+        # instead of a fixed sleep.
+        deadline = time.monotonic() + 0.5
+        for c in clients:
+            try:
+                c.queue.put_nowait(_CLOSE)
+            except Full:
+                pass
+        for c in clients:
+            if c.writer.is_alive() and c.writer is not threading.current_thread():
+                c.writer.join(max(0.0, deadline - time.monotonic()))
         for c in clients:
             c.close()
         self.executor.shutdown(wait=False, cancel_futures=True)
