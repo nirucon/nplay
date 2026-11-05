@@ -10,7 +10,9 @@ class SpotifyRecoveryTests(unittest.TestCase):
   obj.local=MagicMock()
   import threading
   obj._recovery_lock=threading.Lock()
-  obj._last_recovery=0.0
+  # Not 0.0: on a freshly booted CI runner time.monotonic() can be < 90 s,
+  # which made these tests hit the cooldown branch (flaky CI).
+  obj._last_recovery=float("-inf")
   return obj
  def test_registered_device_does_not_restart(self):
   s=self.make();expected={"id":"123","name":"NPLAY"}
