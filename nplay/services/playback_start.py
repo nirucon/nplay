@@ -19,7 +19,7 @@ class MpvStartCoordinator:
    t=a.sr.resolve(t);url=t.url
   elif t.source=='navidrome':
    n=a.nav()
-   if not n:raise RuntimeError('Navidrome is not configured or is disabled')
+   if not n:raise NavidromeError('Navidrome is not configured or is disabled',remedy='set it up in Settings → Navidrome')
    if not t.url or not t.cover:
     fresh=n.song(t.id);t.url=fresh.url;t.cover=fresh.cover;t.duration=fresh.duration or t.duration;t.meta=fresh.meta or t.meta
    url=t.url

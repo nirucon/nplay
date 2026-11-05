@@ -208,3 +208,40 @@ class LogMigration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NavidromeStreamFailure(unittest.TestCase):
+    """U1: a failed Navidrome stream shows the HTTP status and a remedy, never the URL."""
+
+    def run_failure(self, status):
+        from nplay.services.playback_start import MpvStartCoordinator
+        nav = Navidrome("https://music.example", "niru", PASSWORD)
+        url = nav.stream("t1")
+
+        class App:
+            def nav(self):
+                return nav
+        coord = MpvStartCoordinator(App())
+        with patch.object(Navidrome, "stream_status", return_value=status):
+            with self.assertRaises(NavidromeError) as cm:
+                coord._navidrome_stream_failed(url)
+        text = str(cm.exception)
+        self.assertNotIn("music.example", text)
+        self.assertFalse(contains_secret(text))
+        for v in secrets_of(url):
+            self.assertNotIn(v, text)
+        return text
+
+    def test_rejected(self):
+        text = self.run_failure(401)
+        self.assertIn("HTTP 401", text)
+        self.assertIn("check the URL and password in Settings → Navidrome", text)
+
+    def test_server_error(self):
+        self.assertIn("HTTP 503", self.run_failure(503))
+
+    def test_unreachable(self):
+        self.assertIn("unreachable", self.run_failure(None))
+
+    def test_decoder_error_points_to_mpv_log(self):
+        self.assertIn("mpv.log", self.run_failure(200))
