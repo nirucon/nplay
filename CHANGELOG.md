@@ -5,7 +5,8 @@ Security
   idle and receives the URL with `loadfile` over its IPC socket, which moved
   from `/tmp` to the private `$XDG_RUNTIME_DIR/nplay` (0700).
 - One redaction helper (`nplay.redact`) removes `t`, `s`, `p`, `token`,
-  `apiKey` and `access_token` values in every log path (player, providers,
+  `apiKey` and `access_token` values (and the account name; the query ends in
+  `auth=REDACTED`) in every log path (player, providers,
   service, a logger-wide filter and formatter) and in mpv's own log, which is
   now piped through NPLAY.
 - `nplay.log` (and rotations) and `mpv.log` are created 0600, the state
