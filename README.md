@@ -60,7 +60,7 @@ See [STATISTICS.md](STATISTICS.md) for setup, server requirements and privacy sa
 
 ## Status
 
-Current release: **1.7.3**, adding a headless local control service for the NIRUAMP graphical frontend while preserving the standalone terminal player. The service is a versioned Unix-socket JSON-RPC boundary over the existing queue, playback, provider, artwork, library and statistics behaviour. No configuration, credential or database migrations. See [CHANGELOG.md](CHANGELOG.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md). 1.7.1 added drag-reorder support; 1.7.2 adds container validation, legacy queue cleanup and bulk playlist insertion.
+Current release: **1.8.0**: the Navidrome/Subsonic token is kept out of process arguments and logs (existing logs are redacted on upgrade), the control service pushes visualization frames to subscribers (protocol 1.1, `visualization.subscribe`) instead of being polled at 30 Hz, the idle service no longer wakes periodically, and `nplay --doctor` checks privacy. No configuration or database migrations. See [CHANGELOG.md](CHANGELOG.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md). 1.7.x added the headless control service for NIRUAMP, drag-reorder, container validation and bulk playlist insertion.
 
 ## Documentation
 

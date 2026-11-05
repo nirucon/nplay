@@ -1,3 +1,43 @@
+# NPLAY 1.8.0 — privacy, pushed visualization and an idle-quiet service
+
+Security
+- The Subsonic/Navidrome token no longer appears in mpv's argv: mpv starts
+  idle and receives the URL with `loadfile` over its IPC socket, which moved
+  from `/tmp` to the private `$XDG_RUNTIME_DIR/nplay` (0700).
+- One redaction helper (`nplay.redact`) removes `t`, `s`, `p`, `token`,
+  `apiKey` and `access_token` values in every log path (player, providers,
+  service, a logger-wide filter and formatter) and in mpv's own log, which is
+  now piped through NPLAY.
+- `nplay.log` (and rotations) and `mpv.log` are created 0600, the state
+  directory 0700. Upgrade migration: existing logs are redacted in place
+  (temp file + rename, idempotent, no unredacted backup) and old
+  `/tmp/nplay-cava-*.conf` files are removed.
+- MPRIS never publishes a credential-bearing artwork URL.
+
+Visualization and energy
+- Protocol 1.1 (additive; major stays 1): `visualization.subscribe`
+  `{bars, fps≤30, encoding json|b64}` pushes `{"vis":[…]}` frames from CAVA's
+  frame clock, skips frames identical to the last one (silence), and ends on
+  `visualization.unsubscribe` or disconnect. `visualization.status` reports
+  subscribers. Capabilities: `visualization_stream`, `protocol_minor`.
+  `visualization.data` is unchanged for NIRUAMP 0.3.x.
+- CAVA stops as soon as there are no subscribers and no recent `data` poll.
+- The CAVA config moved from `/tmp` to the private runtime directory and is
+  removed when CAVA stops.
+- The idle service no longer wakes periodically (0.5 s accept/read/write/idle
+  loops and the 5 s CAVA monitor are event-driven now; no fixed 0.2 s
+  shutdown sleep).
+
+Terminal UI
+- Navidrome errors show the HTTP status and "check the URL and password in
+  Settings → Navidrome", never the URL.
+- `nplay --doctor` checks log/state/secrets permissions, credential-free logs,
+  mpv argv and the CAVA config location, with a one-line fix per warning.
+- The diagnostics view shows "VIS: CAVA, n subscribers".
+
+No configuration or database migrations. Protocol 1.1; NIRUAMP 0.3.x keeps
+working unchanged (polling); NIRUAMP 0.4.0 can use the stream.
+
 # NPLAY 1.7.3 — CAVA recovery
 
 - Report an accurate error when CAVA cannot start instead of claiming the

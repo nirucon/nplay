@@ -12,7 +12,7 @@ DATA="${XDG_DATA_HOME:-$HOME/.local/share}/nplay"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/nplay"
 BIN="$HOME/.local/bin"; CFG="${XDG_CONFIG_HOME:-$HOME/.config}/nplay"
 B='\033[1m'; D='\033[2m'; G='\033[32m'; Y='\033[33m'; R='\033[31m'; N='\033[0m'
-printf "${B}NPLAY 1.7.3${N}\n${D}Terminal audio player · installer${N}\n\n"
+printf "${B}NPLAY 1.8.0${N}\n${D}Terminal audio player · installer${N}\n\n"
 if [[ -r /etc/os-release ]]; then . /etc/os-release; else ID=unknown; ID_LIKE=""; fi
 id="${ID:-unknown}"; like=" ${ID_LIKE:-} "
 if [[ "$id" =~ ^(arch|omarchy|cachyos|endeavouros)$ ]] || [[ "$like" == *" arch "* ]]; then
@@ -62,6 +62,8 @@ install_deps
 command -v python3 >/dev/null || { echo 'ERROR: python3 missing'; exit 1; }; command -v mpv >/dev/null || { echo 'ERROR: mpv missing'; exit 1; }
 printf "\nINSTALL\n"
 mkdir -p "$BIN" "$(dirname "$APPDEST")" "$CFG" "$DATA" "$STATE"
+# Logs and session state are private (1.8.0); log files are 0600 from NPLAY itself.
+chmod 700 "$STATE" 2>/dev/null || :
 # Small safety backup of irreplaceable persistent state before code upgrade.
 STAMP="$(date +%Y%m%d-%H%M%S)"; BACKUP="$STATE/upgrades/$STAMP"
 mkdir -p "$BACKUP"

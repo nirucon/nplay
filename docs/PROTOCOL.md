@@ -253,6 +253,19 @@ Measured on Python 3.12 (per frame, encoding only): 32 bars `json` 3.8 µs /
 request parse, dispatch and two thread hand-offs per frame. `b64` is the
 cheapest; `json` is the default for simple clients.
 
+End to end (othala, service only, CAVA replaced by a 30 fps fake so the
+numbers exclude CAVA's own cost, which is identical in both modes):
+
+| Client | Service CPU | Service wakeups/s |
+|---|---|---|
+| poll `visualization.data` at 30 Hz (NPLAY 1.7.3 and 1.8.0) | 1.9 % | 137–144 |
+| `visualization.subscribe` 30 fps, `json` | 0.7 % | 31 |
+| `visualization.subscribe` 30 fps, `b64` | 0.6 % | 31 |
+| idle, no client (1.7.3 → 1.8.0) | 0.05 % → 0.0 % | 4.3–6.6 → 0.0 |
+
+During silence a subscribed connection costs only CAVA's frame reads; nothing
+is sent.
+
 ## Errors
 
 Standard JSON-RPC codes are used: `-32600` malformed request, `-32601` unknown
@@ -276,6 +289,6 @@ requests, `-32010` incompatible protocol. Error `data` may include a bounded
 
 ## Minimum versions
 
-- Protocol version: `1`
-- NPLAY minimum: `1.7.3`
-- NIRUAMP minimum: `0.3.2`
+- Protocol version: `1` (minor `1` with NPLAY 1.8.0)
+- NPLAY minimum: `1.7.3`; `1.8.0` for `visualization.subscribe`
+- NIRUAMP minimum: `0.3.2` (0.3.x keeps polling `visualization.data`)

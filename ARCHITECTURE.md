@@ -4,11 +4,13 @@ NPLAY separates terminal UI, playback, providers, local persistence, artwork, th
 
 - `app.py`: orchestration, navigation actions, playback context and providers.
 - `ui.py`: curses UI, responsive geometry, key handling and contextual help.
-- `player.py`: mpv IPC and end-of-track handling.
+- `player.py`: mpv IPC and end-of-track handling. mpv starts idle; media is sent with `loadfile` over the private IPC socket, never in argv. mpv's log is piped through redaction.
+- `redact.py`: the one credential redaction helper (`redact_url`, `redact_text`) used by every log path.
+- `privacy.py`: `--doctor` privacy checks.
 - `db.py`: SQLite local library, playlists, favorites, history and radio stations.
 - `providers.py`: Navidrome, Sveriges Radio and YouTube adapters.
 - `artwork.py`: asynchronous/cached artwork acquisition and Kitty rendering.
-- `visualizer.py`: one persistent CAVA raw-output process sampled by the UI.
+- `visualizer.py`: one persistent CAVA raw-output process sampled by the UI; its frame callback drives the service's pushed visualization stream. The config lives in the private runtime directory.
 - `theme.py`: NPLAY palettes and best-effort Omarchy palette discovery.
 
 The UI must remain functional without Kitty, CAVA, yt-dlp or a configured network provider. mpv and Python are core runtime dependencies. Provider failures are contained so they do not terminate the player.
@@ -95,3 +97,10 @@ a bounded catalogue so clients can request playback and artwork without receivin
 authenticated stream URLs or filesystem paths. Provider calls run off the event
 dispatcher; client queues and frames are capped, and slow clients cannot stall
 playback. See `docs/PROTOCOL.md` for the public contract.
+
+Energy (1.8.0): an idle service sleeps in blocking calls (accept, recv,
+queue get, condition waits) and has no periodic timer. Visualization frames
+are pushed from CAVA's own reader thread to subscribed connections
+(`visualization.subscribe`, protocol 1.1), unchanged frames are skipped, and
+CAVA runs only while a subscriber or a recent `visualization.data` poller
+exists.
