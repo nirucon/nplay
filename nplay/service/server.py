@@ -455,6 +455,9 @@ def serve(path=None, idle_exit=0):
             server.request_stop("signal %d" % signum)
         old_term = signal.signal(signal.SIGTERM, stop)
         old_int = signal.signal(signal.SIGINT, stop)
+        # A service started from a terminal must not outlive it with an
+        # orphaned librespot: SIGHUP is a graceful stop too.
+        old_hup = signal.signal(signal.SIGHUP, stop)
         try:
             server.start()
             started = True

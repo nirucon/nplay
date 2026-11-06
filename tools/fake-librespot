@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""librespot stand-in for NPLAY lifecycle tests.
+
+It plays nothing and never contacts Spotify. It records its pid and argv, and
+with --enable-oauth it prints a consent URL like librespot ("Browse to: …")
+and then caches a fake credentials.json in --system-cache, as librespot does
+after a successful OAuth login. Install it as `librespot` only on a test PATH.
+
+Environment:
+  FAKE_LIBRESPOT_RECORD      append one JSON line {pid, ppid, argv} per start
+  FAKE_LIBRESPOT_AUTH        "ok" (default) or "deny" (never write credentials)
+  FAKE_LIBRESPOT_AUTH_DELAY  seconds before credentials are written (0.4)
+"""
+import json
+import os
+import signal
+import sys
+import time
+
+argv = sys.argv[1:]
+if "--version" in argv:
+    print("librespot 0.8.0 (NPLAY test fake)")
+    raise SystemExit(0)
+
+
+def value(flag):
+    for i, a in enumerate(argv):
+        if a == flag and i + 1 < len(argv):
+            return argv[i + 1]
+        if a.startswith(flag + "="):
+            return a.split("=", 1)[1]
+    return None
+
+
+record = os.environ.get("FAKE_LIBRESPOT_RECORD")
+if record:
+    with open(record, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"pid": os.getpid(), "ppid": os.getppid(), "argv": argv}) + "\n")
+
+signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
+
+if "--enable-oauth" in argv:
+    print("Browse to: https://accounts.spotify.com/authorize?client_id=fake&state=test", flush=True)
+    if os.environ.get("FAKE_LIBRESPOT_AUTH", "ok") == "ok":
+        time.sleep(float(os.environ.get("FAKE_LIBRESPOT_AUTH_DELAY", "0.4")))
+        target = value("--system-cache") or value("--cache")
+        if target:
+            os.makedirs(target, exist_ok=True)
+            tmp = os.path.join(target, ".credentials.tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({"username": "fake", "auth_type": 1, "auth_data": "ZmFrZQ=="}, f)
+            os.replace(tmp, os.path.join(target, "credentials.json"))
+
+while True:
+    time.sleep(3600)

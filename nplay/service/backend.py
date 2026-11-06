@@ -30,6 +30,7 @@ from ..service.protocol import (
 from ..visualizer import Visualizer
 from ..logging_utils import LOG_PATH, logger
 from ..redact import redact_text
+from ..spotify import NOT_AUTHORIZED_CODE, NOT_AUTHORIZED_MESSAGE
 
 log = logger()
 
@@ -90,7 +91,19 @@ class ServiceUI:
         log.info("service status: %s", redact_text(message))
 
     def error(self, title, message=""):
-        log.warning("service error: %s · %s", redact_text(title), redact_text(message))
+        title = redact_text(title)
+        message = redact_text(message)
+        log.warning("service error: %s · %s", title, message)
+        # Protocol 1.2: asynchronous failures (e.g. a Spotify play that runs
+        # in a worker) reach clients instead of only the log.
+        params = {"title": str(title)[:120], "message": str(message)[:300]}
+        if NOT_AUTHORIZED_MESSAGE in str(message):
+            params["code"] = NOT_AUTHORIZED_CODE
+            params["remedy"] = "spotify.local_authorize"
+        try:
+            self.backend.notify("service.error", params)
+        except Exception:
+            log.debug("service.error notification failed", exc_info=True)
 
     def invalidate(self):
         pass
@@ -154,6 +167,7 @@ class ServiceBackend:
         self._vis_monitor = threading.Thread(target=self._vis_monitor_loop, daemon=True, name="nplay-visualizer-idle")
         self._vis_monitor.start()
         self._scanning = False
+        self._local_auth_running = False
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=6, thread_name_prefix="nplay-rpc")
         self.app.events.subscribe("playback-state-changed", self._on_event)
         self.app.events.subscribe("media-changed", self._on_event)
@@ -366,6 +380,10 @@ class ServiceBackend:
             "visualization_stream": True,
             "visualization_encodings": ["json", "b64"],
             "visualization_max_fps": 30,
+            # Protocol 1.2: local librespot receiver state and its OAuth command.
+            "spotify_local_authorize": True,
+            "spotify_local": bool(app.spotify.local.available()),
+            "spotify_local_authorized": bool(app.spotify.local.authorized()),
         }
 
     def snapshot(self):
@@ -1223,9 +1241,23 @@ class ServiceBackend:
         return {
             "settings": out,
             "navidrome": {"configured": self.app.nav_configured(), "url": c.get("navidrome_url", ""), "user": c.get("navidrome_user", "")},
-            "spotify": {"configured": self.app.spotify_configured(), "enabled": c.getbool("spotify_enabled", False)},
+            "spotify": self._spotify_status(),
             "library": {"roots": self.app.roots(), "tracks": self.app.db.count(), "last_scan": dict(self.app.db.last_scan or {})},
             "system": {"version": __version__, "protocol": PROTOCOL_VERSION, "protocol_minor": PROTOCOL_MINOR, "log": str(LOG_PATH)},
+        }
+
+    def _spotify_status(self):
+        c = self.app.cfg
+        local = self.app.spotify.local
+        return {
+            "configured": self.app.spotify_configured(),
+            "enabled": c.getbool("spotify_enabled", False),
+            # Protocol 1.2 additions.
+            "playback": c.get("spotify_playback", "local") or "local",
+            "local_available": bool(local.available()),
+            "local_authorized": bool(local.authorized()),
+            "local_running": bool(local.running()),
+            "local_authorizing": bool(self._local_auth_running),
         }
 
     def settings_set(self, p):
@@ -1290,6 +1322,47 @@ class ServiceBackend:
 
         threading.Thread(target=work, daemon=True, name="nplay-spotify-auth").start()
         return {"started": True}
+
+    def spotify_local_authorize(self, p):
+        """Protocol 1.2: run the terminal's AUTHORIZE flow for librespot.
+
+        Replaces any receiver for NPLAY's cache with one started with
+        --enable-oauth, opens the consent page with NPLAY's browser candidates
+        and reports the result with a `spotify.local_auth` notification.
+        """
+        local = self.app.spotify.local
+        if not local.available():
+            raise BackendError("librespot is not installed", {"remedy": "Install librespot for local Spotify playback, or use an external Spotify Connect device"})
+        with self.lock:
+            if self._local_auth_running:
+                return {"started": False, "running": True}
+            self._local_auth_running = True
+        timeout = p.get("timeout")
+        try:
+            timeout = max(10.0, min(600.0, float(timeout))) if timeout is not None else 180.0
+        except (TypeError, ValueError):
+            raise ParamsError("timeout must be a number of seconds")
+
+        def opened(url):
+            self.notify("spotify.local_auth", {"phase": "browser", "authorized": False})
+
+        def work():
+            try:
+                d = self.app.spotify.authorize_local(timeout=timeout, on_url=opened)
+                if d:
+                    self.app.spotify_state["device"] = d
+                self.app.cfg.set("spotify_playback", "local")
+                self.notify("spotify.local_auth", {"phase": "done", "authorized": True, "device": str((d or {}).get("name") or "")})
+            except Exception as e:
+                log.warning("local Spotify authorization failed: %s", redact_text(e))
+                self.notify("spotify.local_auth", {"phase": "done", "authorized": False, "error": redact_text(e)[:300]})
+            finally:
+                self._local_auth_running = False
+                self.touch("spotify")
+
+        threading.Thread(target=work, daemon=True, name="nplay-spotify-local-auth").start()
+        self.touch("spotify")
+        return {"started": True, "timeout": timeout}
 
     def spotify_disconnect(self, p):
         self.app.spotify.disconnect()
@@ -1397,15 +1470,20 @@ class ServiceBackend:
                 self._vis_stop_locked()
         except Exception:
             pass
+        # Close the local receiver first: close() refuses new starts, so the
+        # Spotify pause scheduled by stop_playback cannot respawn librespot.
         try:
             self.app.save_state()
+        except Exception:
+            log.exception("service shutdown state save failed")
+        try:
+            self.app.spotify.local.close()
+        except Exception:
+            log.exception("service shutdown librespot stop failed")
+        try:
             self.app.stop_playback(None)
         except Exception:
             log.exception("service shutdown playback stop failed")
-        try:
-            self.app.spotify.local.stop()
-        except Exception:
-            pass
         try:
             self.app.mpris.stop()
         except Exception:
@@ -1471,6 +1549,7 @@ class ServiceBackend:
             "navidrome.clear": self.navidrome_clear,
             "spotify.connect": self.spotify_connect,
             "spotify.disconnect": self.spotify_disconnect,
+            "spotify.local_authorize": self.spotify_local_authorize,
             "spotify.devices": self.spotify_devices,
             "spotify.transfer": self.spotify_transfer,
             "library.scan": self.library_scan,
@@ -1496,6 +1575,7 @@ class ServiceBackend:
         }
         snap["capabilities"]["messages"] = [
             "state.changed", "library.scanned", "spotify.auth",
+            "spotify.local_auth", "service.error",
         ]
         # Non-JSON-RPC push lines a subscribed connection may receive.
         snap["capabilities"]["push"] = ["vis"]

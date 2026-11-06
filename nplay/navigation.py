@@ -244,9 +244,12 @@ class NavigationMixin:
   elif s=='spotify:local-authorize':
    ui.loading('SPOTIFY · LOCAL PLAYBACK','Starting explicit librespot authorization · browser may open…')
    def authorize_local():
-    self.spotify.local.stop();self.spotify.local.start(oauth=True)
-    name=self.cfg.get('spotify_local_name','NPLAY') or 'NPLAY'
-    d=self.spotify.wait_for_device(name,180);self.spotify_state['device']=d
+    # Same flow as the service's spotify.local_authorize: replaces any
+    # receiver for this cache, opens the consent page with NPLAY's browser
+    # candidates and succeeds once librespot cached fresh credentials.
+    on_url=lambda url:ui.post(lambda:ui.status('Spotify authorization opened in your browser · complete it there'))
+    d=self.spotify.authorize_local(on_url=on_url)
+    if d:self.spotify_state['device']=d
     return d
    def local_authorized(_):ui.status('Local Spotify authorized · credentials cached for future starts');self.cfg.set('spotify_playback','local');self.open_spotify_home(ui)
    self.async_run(ui,authorize_local,local_authorized,'Local Spotify authorization failed')
@@ -287,11 +290,12 @@ class NavigationMixin:
   self.async_run(ui,lambda:self.spotify.search(q,10),done,'Spotify search unavailable')
  def spotify_local_menu(self,ui):
   e=self.spotify.local;mode=self.cfg.get('spotify_playback','local');state='RUNNING' if e.running() else ('READY' if e.available() else 'NOT INSTALLED')
-  items=[('STATUS','',state+' · '+('selected' if mode=='local' else 'not selected')),('USE THIS COMPUTER','spotify:mode-local','Default · NPLAY manages local Spotify audio'),('START LOCAL ENGINE','spotify:local-start','Start librespot silently · never opens browser'),('AUTHORIZE / REAUTHORIZE','spotify:local-authorize','Explicit OAuth only when local playback actually needs it'),('STOP LOCAL ENGINE','spotify:local-stop','Stop local Spotify receiver'),('USE EXTERNAL CONNECT','spotify:mode-connect','Phone · speaker · another Spotify device'),('DIAGNOSTICS','spotify:local-diag','Engine · backend · cache · recent log')]
+  auth='authorized' if e.authorized() else 'NOT AUTHORIZED · choose AUTHORIZE'
+  items=[('STATUS','',state+' · '+('selected' if mode=='local' else 'not selected')+' · '+auth),('USE THIS COMPUTER','spotify:mode-local','Default · NPLAY manages local Spotify audio'),('START LOCAL ENGINE','spotify:local-start','Start librespot silently · never opens browser'),('AUTHORIZE / REAUTHORIZE','spotify:local-authorize','Explicit OAuth only when local playback actually needs it'),('STOP LOCAL ENGINE','spotify:local-stop','Stop local Spotify receiver'),('USE EXTERNAL CONNECT','spotify:mode-connect','Phone · speaker · another Spotify device'),('DIAGNOSTICS','spotify:local-diag','Engine · backend · cache · recent log')]
   ui.show_menu('SPOTIFY · LOCAL PLAYBACK',items)
  def spotify_local_diagnostics(self,ui):
   e=self.spotify.local
-  rows=[('LIBRESPOT','',e.version() or 'not installed'),('ENGINE','',('running' if e.running() else 'stopped')),('BACKEND','',self.cfg.get('spotify_local_backend','pulseaudio')),('BITRATE','',self.cfg.get('spotify_local_bitrate','320')+' kbps'),('DEVICE NAME','',self.cfg.get('spotify_local_name','NPLAY')),('PLAYBACK MODE','',self.cfg.get('spotify_playback','local')),('CACHE','',str(e.system_cache)),('ENGINE LOG','',str(e.log_path)),('CACHED FILES','',str(len(e.credential_files()))),('RECENT ENGINE LOG','','')]
+  rows=[('LIBRESPOT','',e.version() or 'not installed'),('ENGINE','',('running' if e.running() else 'stopped')),('BACKEND','',self.cfg.get('spotify_local_backend','pulseaudio')),('BITRATE','',self.cfg.get('spotify_local_bitrate','320')+' kbps'),('DEVICE NAME','',self.cfg.get('spotify_local_name','NPLAY')),('PLAYBACK MODE','',self.cfg.get('spotify_playback','local')),('CACHE','',str(e.system_cache)),('ENGINE LOG','',str(e.log_path)),('CACHED FILES','',str(len(e.credential_files()))),('AUTHORIZED','',('yes · credentials cached' if e.authorized() else 'no · choose AUTHORIZE')),('RECEIVER PID','',str(e.pid() or '-')+(' (shared with another NPLAY)' if e.running() and not e.owned() else '')),('RECENT ENGINE LOG','','')]
   rows += [(line[:34],'',line[34:]) for line in (e.log_tail().splitlines() or ['No local engine log yet.'])]
   ui.show_menu('SPOTIFY · LOCAL DIAGNOSTICS',rows)
  def spotify_devices(self,ui):

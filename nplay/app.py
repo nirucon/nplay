@@ -1,4 +1,4 @@
-import argparse,os,sys,threading,shutil,json,time
+import argparse,os,sys,threading,shutil,json,time,signal
 from pathlib import Path
 from . import __version__
 from .config import Config,STATE
@@ -469,9 +469,10 @@ class App(NavigationMixin):
     if ui:ui.status('Spotify · librespot missing · trying Connect device…' if fallback else ('Spotify · starting '+('locally…' if local else 'on Connect device…')))
     def work():
      if local:
-      # Normal playback never opens OAuth. Let librespot reuse whatever
-      # authentication it can actually load; cache-file discovery is diagnostic,
-      # not an authoritative authorization gate.
+      # Normal playback never opens OAuth. The engine reuses librespot's
+      # cached credentials.json; without it, start() fails at once with
+      # LocalSpotifyNotAuthorized (AUTHORIZE remedy) instead of a 20 s
+      # registration wait and a wasted automatic restart.
       name=self.cfg.get('spotify_local_name','NPLAY') or 'NPLAY';d=self.spotify.ensure_local_device(name,20);did=d['id'];self.spotify.activate_device(did)
       last_error=None
       for delay in (0,.35,.75,1.25):
@@ -750,7 +751,7 @@ class App(NavigationMixin):
    r=self.scan();ui.status(f"Scan · {r['checked']} checked · {r['new']} new · {r['updated']} updated · {r['removed']} removed · {r['total']} indexed")
   else:ui.status('Unknown command · use :help · commands: :stop · :bookmarks · :now · :browse · :theme · :settings · :nav QUERY · :spotify QUERY · :sr QUERY · :yt QUERY · :radio p1 · :view normal|artwork|visualizer · :normalize · :gapless · :shuffle · :repeat · :sleep 30|track|album|off · :smart · :stats · :discover · :rating 0-5 · :queue-save · :queue-clear · :diagnostics · :about · :scan')
 def doctor(a=None):
- a=a or App();print(f'NPLAY {__version__} by Nicklas Rudolfsson');print('python       OK');print('mpv          '+('OK' if shutil.which('mpv') else 'MISSING'));print('yt-dlp       '+((a.yt.version()+' · '+a.yt.binary) if a.yt.available() else 'optional / missing'));print('cava         '+('OK' if shutil.which('cava') else 'optional / missing'));print('mpris        '+((a.mpris.status()) if a.cfg.getbool('mpris_enabled',True) else 'off'));print('notifications '+(('ON · '+str(a.notifier.binary)) if a.notifier.enabled() else ('enabled / unavailable' if a.cfg.getbool('track_notifications',True) else 'off')));print('terminal     '+os.getenv('TERM','unknown'));print('kitty        '+('YES' if os.getenv('KITTY_WINDOW_ID') else 'no'));print('library      '+str(a.db.count())+' indexed tracks · schema '+str(a.db.schema_version()));print('navidrome    '+(('enabled / configured' if a.nav_configured() else 'enabled / not configured') if a.cfg.getbool('navidrome_enabled',True) else 'disabled'));print('spotify      '+(('enabled / connected' if a.spotify_configured() else 'enabled / setup required') if a.cfg.getbool('spotify_enabled',False) else 'disabled'));print('librespot     '+(('running' if a.spotify.local.running() else 'available') if a.spotify.local.available() else 'optional / missing'));print('sr           '+('enabled' if a.cfg.getbool('sr_enabled',True) else 'disabled'));print('youtube      '+('enabled' if a.cfg.getbool('youtube_enabled',True) else 'disabled'));print('custom radio '+('enabled' if a.cfg.getbool('custom_radio_enabled',True) else 'disabled'));print('music roots  '+' : '.join(a.roots()));print('config       '+str(a.cfg.path));print('log          '+str(LOG_PATH)+' · '+str(recent_error_count())+' recent warnings/errors');print('mpv log      '+str(STATE/'mpv.log'))
+ a=a or App();print(f'NPLAY {__version__} by Nicklas Rudolfsson');print('python       OK');print('mpv          '+('OK' if shutil.which('mpv') else 'MISSING'));print('yt-dlp       '+((a.yt.version()+' · '+a.yt.binary) if a.yt.available() else 'optional / missing'));print('cava         '+('OK' if shutil.which('cava') else 'optional / missing'));print('mpris        '+((a.mpris.status()) if a.cfg.getbool('mpris_enabled',True) else 'off'));print('notifications '+(('ON · '+str(a.notifier.binary)) if a.notifier.enabled() else ('enabled / unavailable' if a.cfg.getbool('track_notifications',True) else 'off')));print('terminal     '+os.getenv('TERM','unknown'));print('kitty        '+('YES' if os.getenv('KITTY_WINDOW_ID') else 'no'));print('library      '+str(a.db.count())+' indexed tracks · schema '+str(a.db.schema_version()));print('navidrome    '+(('enabled / configured' if a.nav_configured() else 'enabled / not configured') if a.cfg.getbool('navidrome_enabled',True) else 'disabled'));print('spotify      '+(('enabled / connected' if a.spotify_configured() else 'enabled / setup required') if a.cfg.getbool('spotify_enabled',False) else 'disabled'));print('librespot     '+(('running' if a.spotify.local.running() else 'available')+' · '+('authorized' if a.spotify.local.authorized() else 'not authorized · Spotify → Local playback → AUTHORIZE') if a.spotify.local.available() else 'optional / missing'));stale=a.spotify.local.stale_receivers();stale and print('librespot    WARNING '+str(len(stale))+' orphaned receiver(s) pid '+','.join(map(str,stale))+' · fix: the next NPLAY Spotify start replaces them, or kill '+' '.join(map(str,stale)));print('sr           '+('enabled' if a.cfg.getbool('sr_enabled',True) else 'disabled'));print('youtube      '+('enabled' if a.cfg.getbool('youtube_enabled',True) else 'disabled'));print('custom radio '+('enabled' if a.cfg.getbool('custom_radio_enabled',True) else 'disabled'));print('music roots  '+' : '.join(a.roots()));print('config       '+str(a.cfg.path));print('log          '+str(LOG_PATH)+' · '+str(recent_error_count())+' recent warnings/errors');print('mpv log      '+str(STATE/'mpv.log'))
  from .service.probe import vis_line
  print('visualizer   '+vis_line(False).replace('terminal off · ',''))
  from .privacy import doctor_lines
@@ -789,7 +790,21 @@ def main():
  if not shutil.which('mpv'):raise SystemExit('mpv is required. Run: nplay --doctor')
  ui=UI(a)
  if args.query:a.search_async(' '.join(args.query),ui)
+ # SIGTERM and SIGHUP (terminal closed) unwind like Q/Ctrl+C so the cleanup
+ # below runs. A SIGKILL or crash cannot; the local librespot receiver still
+ # dies with NPLAY through PR_SET_PDEATHSIG (see nplay.spotify).
+ def _terminate(signum,frame):raise SystemExit(128+signum)
+ for sig in (signal.SIGTERM,signal.SIGHUP):
+  try:signal.signal(sig,_terminate)
+  except (OSError,ValueError):pass
  try:ui.run()
  except KeyboardInterrupt:pass
- finally:a.save_state();a.stop_playback(None);a.spotify.local.stop();a.mpris.stop()
+ finally:shutdown(a)
+def shutdown(a):
+ """Terminal exit cleanup. Each step runs even if an earlier one fails."""
+ # Close the local receiver before stop_playback: close() also refuses new
+ # starts, so the background Spotify pause cannot rebind and respawn it.
+ for step in (a.save_state,a.spotify.local.close,lambda:a.stop_playback(None),a.mpris.stop):
+  try:step()
+  except Exception:log.exception('shutdown step failed')
 if __name__=='__main__':main()

@@ -15,7 +15,9 @@ PROTOCOL_VERSION = 1
 # Minor version: additions only, every 1.x request keeps working.
 #   1.0  NPLAY 1.7.0  initial protocol
 #   1.1  NPLAY 1.8.0  visualization.subscribe/unsubscribe/status push stream
-PROTOCOL_MINOR = 1
+#   1.2  NPLAY 1.8.1  spotify.local_authorize, spotify.local_auth and
+#                     service.error notifications, local receiver state
+PROTOCOL_MINOR = 2
 SERVICE_NAME = "nplay"
 MAX_FRAME = 1024 * 1024
 MAX_TRACKS = 5000
