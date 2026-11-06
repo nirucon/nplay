@@ -25,7 +25,9 @@ SCOPES=' '.join([
 def _desktop_browser_command(desktop_id):
  """Resolve a .desktop file to an argv list with a {url} placeholder."""
  if not desktop_id:return None
- roots=[Path.home()/'.local/share/applications','/usr/local/share/applications','/usr/share/applications']
+ # All Path objects: a str root made `root/desktop_id` raise TypeError as soon
+ # as the desktop file was not in ~/.local/share/applications.
+ roots=[Path.home()/'.local/share/applications',Path('/usr/local/share/applications'),Path('/usr/share/applications')]
  roots += [Path(p)/'applications' for p in os.environ.get('XDG_DATA_DIRS','/usr/local/share:/usr/share').split(':') if p]
  seen=set()
  for root in roots:
@@ -527,7 +529,10 @@ class LocalSpotifyEngine:
       if on_url:
        try:on_url(url)
        except Exception:pass
-      if not opener(url):log.warning('librespot OAuth URL could not be opened in a browser · see %s',self.log_path)
+      try:ok=opener(url)
+      except Exception as e:
+       log.warning('librespot OAuth browser launch failed: %s',e);ok=False
+      if not ok:log.warning('librespot OAuth URL could not be opened in a browser · see %s',self.log_path)
     time.sleep(.25)
    raise RuntimeError(f'Local Spotify authorization timed out after {int(timeout)}s · retry and complete authorization in the browser')
   except BaseException:

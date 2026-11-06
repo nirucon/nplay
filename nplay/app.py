@@ -7,7 +7,7 @@ from .statistics import StatisticsStore,ListeningTracker
 from .statistics.sync import StatisticsSync,DEFAULT_URL
 from .player import Player
 from .providers import Navidrome,SR,YouTube
-from .spotify import Spotify
+from .spotify import Spotify,LocalSpotifyNotAuthorized
 from .notifications import Notifier
 from .artwork_cache import ArtworkCache
 from .logging_utils import logger,LOG_PATH,recent_error_count
@@ -523,6 +523,7 @@ class App(NavigationMixin):
     if ui:
      def run_spotify():
       try:r=work();ui.post(lambda r=r:started(r))
+      except LocalSpotifyNotAuthorized as e:err=str(e);log.warning('Spotify play request failed · %s',err);ui.post(lambda err=err:failed(err))
       except Exception as e:err=str(e);log.exception('Spotify play request failed');ui.post(lambda err=err:failed(err))
      threading.Thread(target=run_spotify,daemon=True).start()
     else:

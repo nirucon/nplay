@@ -56,6 +56,11 @@ class Sandbox:
         (self.bin / "librespot").symlink_to(FAKE)
         (self.bin / "mpv").symlink_to(FAKE_MPV)
         self.record = self.root / "librespot-starts.jsonl"
+        # NPLAY's first browser candidate is $BROWSER: record, never open.
+        self.opened = self.root / "browser-opened.txt"
+        browser = self.bin / "fake-browser"
+        browser.write_text(f"#!/bin/sh\necho \"$1\" >> '{self.opened}'\n")
+        browser.chmod(0o755)
         self.env = {k: v for k, v in os.environ.items() if not k.startswith(("XDG_", "NPLAY_", "FAKE_LIBRESPOT"))}
         self.env.update({
             "HOME": str(self.root / "home"),
@@ -68,6 +73,7 @@ class Sandbox:
             "PYTHONUNBUFFERED": "1",
             "FAKE_LIBRESPOT_RECORD": str(self.record),
             "TERM": "xterm",
+            "BROWSER": str(browser) + " %s",
         })
         for k in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR"):
             Path(self.env[k]).mkdir(parents=True, exist_ok=True)
@@ -337,6 +343,8 @@ class ServiceLifecycleTests(unittest.TestCase):
         done = rpc.wait_note("spotify.local_auth", lambda p: p.get("phase") == "done", timeout=20)
         self.assertTrue(done["authorized"], done)
         self.assertIn("--enable-oauth", self.sb.starts()[-1]["argv"])
+        # The URL librespot printed was opened with NPLAY's browser candidates.
+        self.assertTrue(wait_for(lambda: self.sb.opened.exists() and "accounts.spotify.com" in self.sb.opened.read_text(), timeout=5))
         status = rpc.call("settings.get")["result"]["spotify"]
         self.assertTrue(status["local_authorized"])
         self.assertTrue(status["local_running"])
@@ -390,6 +398,47 @@ class ServiceLifecycleTests(unittest.TestCase):
         rpc.close()
         p.terminate()
         p.wait(timeout=15)
+
+
+PLAY_UNAUTHORIZED = r"""
+import json, sys, threading, time
+from nplay.model import Track
+from nplay.service.backend import ServiceBackend
+notes = []
+got = threading.Event()
+def notify(method, params):
+    if method == "service.error":
+        notes.append(params); got.set()
+b = ServiceBackend(notify=notify)
+b.app.cfg.set("spotify_playback", "local")
+t = Track(source="spotify", id="t1", title="Song", artist="A", kind="track", seekable=True, meta={"spotify_uri": "spotify:track:t1"})
+b._remember(t)
+started = time.monotonic()
+b.play({"track": {"source": "spotify", "id": "t1"}})
+got.wait(10)
+print(json.dumps({"notes": notes, "elapsed": time.monotonic() - started}))
+b.close()
+"""
+
+
+@unittest.skipUnless(sys.platform.startswith("linux"), "/proc is Linux-only")
+class ServicePlayUnauthorizedTests(unittest.TestCase):
+    def test_play_without_credentials_reports_code_immediately(self):
+        sb = Sandbox()
+        try:
+            out = subprocess.run([sys.executable, "-c", PLAY_UNAUTHORIZED], cwd=str(ROOT), env=sb.env,
+                                 capture_output=True, text=True, timeout=60)
+            self.assertEqual(out.returncode, 0, out.stderr[-2000:])
+            res = json.loads(out.stdout.strip().splitlines()[-1])
+            self.assertTrue(res["notes"], "no service.error notification")
+            note = res["notes"][0]
+            self.assertEqual(note["code"], "spotify_local_unauthorized")
+            self.assertEqual(note["remedy"], "spotify.local_authorize")
+            self.assertIn("not authorized yet", note["message"])
+            self.assertLess(res["elapsed"], 5.0, "must not wait for device registration")
+            self.assertEqual(sb.starts(), [], "librespot must not be started without credentials")
+        finally:
+            sb.cleanup()
 
 
 @unittest.skipUnless(sys.platform.startswith("linux"), "/proc is Linux-only")

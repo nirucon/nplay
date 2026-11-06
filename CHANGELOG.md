@@ -24,6 +24,9 @@ Local Spotify playback (librespot)
   restored if the new authorization fails), opens the consent page with
   NPLAY's browser candidates (now also `omarchy-launch-browser`) instead of
   librespot's own opener, and finishes when credentials are cached.
+- Fix: the browser lookup for Spotify authorization raised a TypeError when
+  the default browser's .desktop file was not in
+  `~/.local/share/applications` (system directories were plain strings).
 
 Control service (protocol 1.2, additive)
 - `spotify.local_authorize` runs the same AUTHORIZE flow; the result arrives

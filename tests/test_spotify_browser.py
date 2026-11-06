@@ -46,6 +46,12 @@ class BrowserResolverTests(unittest.TestCase):
             command = spotify_mod._desktop_browser_command(str(desktop))
         self.assertEqual(command, ['helium', '--new-window', '{url}', '--label=%'])
 
+    def test_desktop_lookup_falls_through_to_system_dirs(self):
+        # Regression: str roots after the first one raised TypeError.
+        with tempfile.TemporaryDirectory() as home, patch.object(spotify_mod.Path, 'home', return_value=Path(home)), \
+                patch.dict(os.environ, {'XDG_DATA_DIRS': ''}, clear=False):
+            self.assertIsNone(spotify_mod._desktop_browser_command('nplay-test-missing-browser.desktop'))
+
     def test_desktop_without_url_placeholder_gets_url(self):
         with tempfile.TemporaryDirectory() as folder:
             desktop = Path(folder) / 'browser.desktop'
