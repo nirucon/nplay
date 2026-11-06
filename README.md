@@ -60,7 +60,7 @@ See [STATISTICS.md](STATISTICS.md) for setup, server requirements and privacy sa
 
 ## Status
 
-Current release: **1.8.0**: the Navidrome/Subsonic token is kept out of process arguments and logs (existing logs are redacted on upgrade), the control service pushes visualization frames to subscribers (protocol 1.1, `visualization.subscribe`) instead of being polled at 30 Hz, the idle service no longer wakes periodically, and `nplay --doctor` checks privacy. No configuration or database migrations. See [CHANGELOG.md](CHANGELOG.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md). 1.7.x added the headless control service for NIRUAMP, drag-reorder, container validation and bulk playlist insertion.
+Current release: **1.8.1**: the local Spotify receiver (librespot) can no longer outlive NPLAY or run twice (no more double audio after quitting the terminal UI or closing NIRUAMP; orphans from older versions are stopped), missing local authorization fails at once with an AUTHORIZE hint instead of a 20 s timeout, and the control service can run that authorization (protocol 1.2, `spotify.local_authorize`). 1.8.0: the Navidrome/Subsonic token is kept out of process arguments and logs (existing logs are redacted on upgrade), the control service pushes visualization frames to subscribers (protocol 1.1, `visualization.subscribe`) instead of being polled at 30 Hz, the idle service no longer wakes periodically, and `nplay --doctor` checks privacy. No configuration or database migrations. See [CHANGELOG.md](CHANGELOG.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md). 1.7.x added the headless control service for NIRUAMP, drag-reorder, container validation and bulk playlist insertion.
 
 ## Documentation
 

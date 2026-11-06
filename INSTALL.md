@@ -56,3 +56,5 @@ Navidrome password.
 
 ## Spotify local authorization persistence (1.1.3)
 Local librespot authorization is a one-time step under normal operation. Credentials are stored in NPLAY's persistent XDG data directory and are reused across NPLAY restarts and code upgrades. Reauthorization is only expected if credentials are removed/revoked, Spotify invalidates them, or the user explicitly disconnects/resets Spotify.
+
+Upgrading from 1.8.0 or older: a librespot receiver that an older NPLAY left running (it kept playing after NPLAY quit) is stopped automatically the next time NPLAY starts local Spotify playback; `nplay --doctor` lists any such orphan.

@@ -1,3 +1,47 @@
+# NPLAY 1.8.1 — one local Spotify receiver, and it stops with NPLAY
+
+Local Spotify playback (librespot)
+- Fix: librespot no longer outlives NPLAY. Quitting the terminal UI could
+  leave it playing (a Spotify pause still in flight at exit respawned it, and
+  the cleanup stopped at the first failing step); the service's NPLAY then
+  started a second receiver with the same name and cache, so two "NPLAY"
+  Connect devices played at once. Now every exit stops it: Q, Ctrl+C,
+  SIGTERM, SIGHUP (terminal closed), `service.shutdown`, `--idle-exit`, and
+  even a crash or SIGKILL of NPLAY (`PR_SET_PDEATHSIG`; spawns run on one
+  long-lived thread because the death signal follows the forking thread).
+- One receiver per cache directory: before starting, NPLAY finds librespot
+  processes of the same user with the same `--cache` (verified in
+  `/proc/<pid>/cmdline`) under a lock in `$XDG_RUNTIME_DIR/nplay`. A receiver
+  owned by another live NPLAY (terminal UI or service) is adopted and shared;
+  an orphan, e.g. left by NPLAY ≤ 1.8.0, is terminated. A pid file records
+  the owner. `nplay --doctor` lists orphans; the diagnostics view shows the
+  receiver pid and whether it is shared.
+- Missing local authorization fails immediately with "Local Spotify playback
+  is not authorized yet · choose Spotify → Local playback → AUTHORIZE"
+  instead of a 20 s registration wait, a restart and a generic timeout.
+- AUTHORIZE / REAUTHORIZE actually reauthorizes (librespot ignored
+  `--enable-oauth` while credentials were cached; they are moved aside and
+  restored if the new authorization fails), opens the consent page with
+  NPLAY's browser candidates (now also `omarchy-launch-browser`) instead of
+  librespot's own opener, and finishes when credentials are cached.
+
+Control service (protocol 1.2, additive)
+- `spotify.local_authorize` runs the same AUTHORIZE flow; the result arrives
+  as a `spotify.local_auth` notification.
+- `service.error` notifications report asynchronous failures (e.g. a Spotify
+  play that fails after `playback.play` returned), with
+  `code: "spotify_local_unauthorized"` for missing local authorization.
+- Capabilities `spotify_local_authorize`, `spotify_local`,
+  `spotify_local_authorized`; `settings.get` reports the local receiver state.
+- The service also stops gracefully on SIGHUP.
+
+Tests: `tools/fake-librespot` and `tests/test_librespot_lifecycle.py` cover
+every exit path of the terminal UI and the service, orphan replacement,
+adoption, the authorization gate and the OAuth flow.
+
+No configuration or database migrations. Works with every NIRUAMP ≥ 0.3.2;
+NIRUAMP 0.5.2 adds the authorize control.
+
 # NPLAY 1.8.0 — privacy, pushed visualization and an idle-quiet service
 
 Security

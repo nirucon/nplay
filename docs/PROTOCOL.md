@@ -85,10 +85,13 @@ connection. The subscribe result is a fresh snapshot.
     "playlists": true, "favorites": true, "ratings": true,
     "spotify": false, "navidrome": false, "youtube": false,
     "cava": false, "mpv": true,
-    "backend_version": "1.8.0", "protocol_version": 1, "protocol_minor": 1,
+    "backend_version": "1.8.1", "protocol_version": 1, "protocol_minor": 2,
     "visualization_stream": true, "visualization_encodings": ["json","b64"],
     "visualization_max_fps": 30,
-    "messages": ["state.changed","library.scanned","spotify.auth"],
+    "spotify_local_authorize": true, "spotify_local": true,
+    "spotify_local_authorized": false,
+    "messages": ["state.changed","library.scanned","spotify.auth",
+                 "spotify.local_auth","service.error"],
     "push": ["vis"]
   }
 }
@@ -159,6 +162,7 @@ service.
 | `navidrome.setup` / `navidrome.clear` | `url`,`user`,`password` / `{}` | Credentials go straight to NPLAY's 0600 secrets file |
 | `spotify.connect` / `spotify.disconnect` | `{}` | Connect opens the normal OAuth browser flow in the background |
 | `spotify.devices` / `spotify.transfer` | `{}` / `device_id`, `play` | |
+| `spotify.local_authorize` | optional `timeout` 10–600 s (180) | 1.2: the terminal's Local playback → AUTHORIZE flow in the background (replaces the local receiver with one started with `--enable-oauth`, opens the consent page with NPLAY's browser candidates); returns `{"started":true}` or `{"started":false,"running":true}`; result in `spotify.local_auth` |
 | `library.scan` | optional `force` | Asynchronous; emits `library.scanned` |
 | `library.stats` | `{}` | Counts, roots, schema |
 | `service.info` | `{}` | Backend version, protocol version/minor, pid, uptime, `visualization` status |
@@ -200,6 +204,28 @@ capability changes:
 `state.snapshot`; it must not infer queue or playback state from event ordering
 alone. `library.scanned` and `spotify.auth` carry operation results.
 
+Protocol 1.2 adds two notifications (only on subscribed connections, like the
+others; old clients ignore unknown methods):
+
+- `spotify.local_auth` reports `spotify.local_authorize`:
+  `{"phase":"browser","authorized":false}` once the consent page was opened,
+  then `{"phase":"done","authorized":true,"device":"NPLAY"}` or
+  `{"phase":"done","authorized":false,"error":"…"}`.
+- `service.error` reports an asynchronous failure that the terminal UI would
+  show in its status line, e.g. a Spotify play that fails in a worker after
+  `playback.play` already returned: `{"title":"Spotify playback
+  unavailable","message":"…"}`. When local Spotify playback is not authorized
+  the message is "Local Spotify playback is not authorized yet · choose
+  Spotify → Local playback → AUTHORIZE" and the params also carry
+  `"code":"spotify_local_unauthorized","remedy":"spotify.local_authorize"`.
+
+Local receiver state (1.2): capabilities `spotify_local_authorize` (the
+command exists), `spotify_local` (librespot installed) and
+`spotify_local_authorized` (librespot credentials cached); `settings.get`
+`spotify` adds `playback` (`local`/`connect`), `local_available`,
+`local_authorized`, `local_running` and `local_authorizing`. A client hides
+its authorize control when `spotify_local_authorize` is absent (NPLAY ≤ 1.8.0).
+
 ## Versioning
 
 `protocol_version` is the major version (still `1`); clients keep sending
@@ -210,6 +236,7 @@ alone. `library.scanned` and `spotify.auth` carry operation results.
 |---|---|---|
 | 1.0 | 1.7.0 | Initial protocol (`protocol_minor` absent means 0) |
 | 1.1 | 1.8.0 | `visualization.subscribe` / `unsubscribe` / `status`, capability `visualization_stream` |
+| 1.2 | 1.8.1 | `spotify.local_authorize`, notifications `spotify.local_auth` and `service.error`, capabilities `spotify_local_authorize` / `spotify_local` / `spotify_local_authorized`, `settings.get` local receiver state |
 
 ## Visualization stream (1.1)
 
@@ -284,11 +311,16 @@ requests, `-32010` incompatible protocol. Error `data` may include a bounded
   lock and verifying that no process answers.
 - A client that did not start the service must not call `service.shutdown`.
 - The service never spawns an extra player merely because a GUI connects.
+- The local librespot receiver is shared with a terminal NPLAY: whichever
+  NPLAY starts it owns it, the other adopts it, and it stops with its owner
+  (also on SIGKILL); see ARCHITECTURE.md, "Local receiver lifecycle and
+  ownership".
 - Artwork fetches are limited to tracks in the reference catalogue and capped
   at 12 MiB; arbitrary filesystem reads are not exposed.
 
 ## Minimum versions
 
-- Protocol version: `1` (minor `1` with NPLAY 1.8.0)
-- NPLAY minimum: `1.7.3`; `1.8.0` for `visualization.subscribe`
+- Protocol version: `1` (minor `1` with NPLAY 1.8.0, `2` with 1.8.1)
+- NPLAY minimum: `1.7.3`; `1.8.0` for `visualization.subscribe`; `1.8.1` for
+  `spotify.local_authorize`
 - NIRUAMP minimum: `0.3.2` (0.3.x keeps polling `visualization.data`)

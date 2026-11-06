@@ -99,6 +99,8 @@ Spotify Development Mode has account/app limits controlled by Spotify. A Premium
 ## Spotify local authorization persistence (1.1.3)
 Local librespot authorization is a one-time step under normal operation. Credentials are stored in NPLAY's persistent XDG data directory and are reused across NPLAY restarts and code upgrades. Reauthorization is only expected if credentials are removed/revoked, Spotify invalidates them, or the user explicitly disconnects/resets Spotify.
 
+Since 1.8.1 NPLAY checks for librespot's cached `credentials.json` before starting the local receiver. Without it, local playback fails immediately with "Local Spotify playback is not authorized yet · choose Spotify → Local playback → AUTHORIZE" (in NIRUAMP: Settings → Sources → Spotify → AUTHORIZE LOCAL). REAUTHORIZE keeps the previous credentials if the new authorization fails. The receiver is shared between a terminal NPLAY and the NPLAY service and always stops with the NPLAY process that started it; see ARCHITECTURE.md, "Local receiver lifecycle and ownership".
+
 
 ## Large local libraries (1.1.3)
 
