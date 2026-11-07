@@ -84,7 +84,11 @@ nplay
 ```
 
 The installer detects the package manager, lists missing required and
-recommended packages and asks before using `sudo` to install them. It then
+recommended packages and asks before using `sudo` to install them. Without a
+terminal it does not ask: `./install.sh --yes` (or `NPLAY_ASSUME_YES=1`, which
+`nirux extras install` sets when it runs unattended) installs them, otherwise
+missing recommended packages are skipped and missing required ones stop the
+install. It then
 backs up your irreplaceable state (`library.db`, `statistics.sqlite3`, Spotify
 credentials, `config.ini`, `secrets.ini`) to
 `~/.local/state/nplay/upgrades/TIMESTAMP/`, replaces only the application code
@@ -187,21 +191,26 @@ respected.
 
 ## Uninstall
 
-> **Warning:** `uninstall.sh` (unchanged since 1.4.1) removes the launcher and
-> the whole `~/.local/share/nplay` directory, which is your **data**: the
-> library database, playlists, favorites, history, statistics and Spotify
-> credentials. It does not remove the application code in `~/.local/lib/nplay`
-> or the desktop entry. Back up `~/.local/share/nplay` before running it.
-
-To remove only the program and keep your data:
+With NIRUX:
 
 ```sh
-rm -f ~/.local/bin/nplay ~/.local/share/applications/nplay.desktop
-rm -rf ~/.local/lib/nplay
+nirux extras uninstall nplay           # remove the program, keep your data
+nirux extras uninstall nplay --purge   # also delete data, configuration and state
 ```
 
-Configuration (`~/.config/nplay`) and state (`~/.local/state/nplay`) are
-never removed automatically.
+Standalone, from a checkout:
+
+```sh
+./uninstall.sh          # removes the launcher, ~/.local/lib/nplay and the desktop entry
+./uninstall.sh --purge  # also removes ~/.local/share/nplay, ~/.config/nplay,
+                        # ~/.local/state/nplay and ~/.cache/nplay
+```
+
+A normal uninstall keeps your data: the library database, playlists,
+favorites, history, statistics and Spotify credentials in
+`~/.local/share/nplay`, plus the configuration and state. Only `--purge`
+deletes them. NPLAY 1.8.1 and older shipped an `uninstall.sh` that deleted
+`~/.local/share/nplay` and left the program behind; do not use that one.
 
 ## Building from source
 
@@ -218,7 +227,7 @@ release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Status, disclaimer and how it's made
 
-**Status: beta.** Local music, Navidrome, Sveriges Radio and YouTube are solid and covered by unit and service tests. Spotify depends on Spotify's APIs and on librespot, and the uninstall script is due for a fix (see Uninstall).
+**Status: beta.** Local music, Navidrome, Sveriges Radio and YouTube are solid and covered by unit and service tests. Spotify depends on Spotify's APIs and on librespot,.
 
 NIRUX and every niru* project are made by me, Nicklas Rudolfsson
 ([@nirucon](https://github.com/nirucon)), for me. They are tailored to my own

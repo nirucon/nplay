@@ -1,3 +1,19 @@
+# NPLAY 1.8.2 — a safe uninstaller and unattended installs
+
+Install and uninstall
+- Fix: `uninstall.sh` deleted `~/.local/share/nplay` (the library database,
+  playlists, favorites, history, statistics and Spotify credentials) and left
+  the program in `~/.local/lib/nplay` and its desktop entry behind. It now
+  removes the program and keeps all data, configuration and state; `--purge`
+  deletes those too. A running NPLAY service is stopped first.
+- Fix: the installer stopped with "Cannot ask permission without an
+  interactive terminal" when it ran unattended, for example from
+  `nirux extras install`, even when only recommended packages were missing.
+  `--yes`, `NPLAY_ASSUME_YES=1` or `NIRUX_ASSUME_YES=1` is now the consent;
+  without it, missing recommended packages are skipped and only missing
+  required ones stop the install. pacman, xbps and apt no longer ask a second
+  time after you answered the installer's question.
+
 # NPLAY 1.8.1 — one local Spotify receiver, and it stops with NPLAY
 
 Local Spotify playback (librespot)

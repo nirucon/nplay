@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+ASSUME_YES=0
+[[ ${NPLAY_ASSUME_YES:-${NIRUX_ASSUME_YES:-0}} == 1 ]] && ASSUME_YES=1
+for arg in "$@"; do
+ case "$arg" in
+  -y|--yes) ASSUME_YES=1 ;;
+  -h|--help) echo "usage: ./install.sh [--yes]   (--yes installs missing packages without asking)"; exit 0 ;;
+  *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
+ esac
+done
 # Code and persistent data MUST be separate. Older installers placed both below
 # ~/.local/share/nplay and atomically replaced that directory on upgrade, which
 # could delete library.db and librespot credentials. 1.3.5 fixed that layout.
@@ -12,7 +21,7 @@ DATA="${XDG_DATA_HOME:-$HOME/.local/share}/nplay"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/nplay"
 BIN="$HOME/.local/bin"; CFG="${XDG_CONFIG_HOME:-$HOME/.config}/nplay"
 B='\033[1m'; D='\033[2m'; G='\033[32m'; Y='\033[33m'; R='\033[31m'; N='\033[0m'
-printf "${B}NPLAY 1.8.1${N}\n${D}Terminal audio player · installer${N}\n\n"
+printf "${B}NPLAY 1.8.2${N}\n${D}Terminal audio player · installer${N}\n\n"
 if [[ -r /etc/os-release ]]; then . /etc/os-release; else ID=unknown; ID_LIKE=""; fi
 id="${ID:-unknown}"; like=" ${ID_LIKE:-} "
 if [[ "$id" =~ ^(arch|omarchy|cachyos|endeavouros)$ ]] || [[ "$like" == *" arch "* ]]; then
@@ -54,9 +63,23 @@ install_deps(){
   case "$PM:$x" in pacman:python3) mapped+=(python);; pacman:mutagen) mapped+=(python-mutagen);; apt:mutagen) mapped+=(python3-mutagen);; pacman:notify) mapped+=(libnotify);; apt:notify) mapped+=(libnotify-bin);; pacman:mpris) mapped+=(python-dbus python-gobject);; xbps:python3) mapped+=(python3);; xbps:mutagen) mapped+=(python3-mutagen);; xbps:notify) mapped+=(libnotify);; xbps:mpris) mapped+=(python3-dbus python3-gobject);; apt:mpris) mapped+=(python3-dbus python3-gi);; *) mapped+=("$x");; esac
  done
  printf "DEPENDENCIES\n"; for x in "${mapped[@]}"; do printf "  ${Y}•${N} %s\n" "$x"; done
- if [[ ! -t 0 ]]; then printf "${R}Cannot ask permission without an interactive terminal.${N}\n"; exit 1; fi
- printf "\nInstall missing dependencies using sudo? [Y/n] "; read -r ans; [[ ${ans:-Y} =~ ^[Yy]$ ]] || { printf "Installation cancelled.\n"; exit 1; }
- if [[ $PM == pacman ]]; then sudo pacman -S --needed "${mapped[@]}"; elif [[ $PM == xbps ]]; then sudo xbps-install -S "${mapped[@]}"; else sudo apt-get update; sudo apt-get install -y "${mapped[@]}"; fi
+ # Without a terminal there is nobody to ask. `--yes`, NPLAY_ASSUME_YES=1 or
+ # NIRUX_ASSUME_YES=1 (set by `nirux extras install` when it runs unattended)
+ # is the consent; otherwise only missing *required* packages stop the install
+ # and recommended ones are reported and skipped.
+ local yes=0
+ [[ $ASSUME_YES == 1 ]] && yes=1
+ if [[ $yes == 0 && ! -t 0 ]]; then
+  if [[ ${#required[@]} -gt 0 ]]; then
+   printf "${R}Required packages are missing and there is no terminal to ask for permission.${N}\nRerun in a terminal, or with --yes to install them.\n"; exit 1
+  fi
+  printf "${Y}No terminal to ask for permission; skipping the recommended packages above.${N}\nRerun in a terminal, or with --yes, to install them.\n"
+  return 0
+ fi
+ if [[ $yes == 0 ]]; then
+  printf "\nInstall missing dependencies using sudo? [Y/n] "; read -r ans; [[ ${ans:-Y} =~ ^[Yy]$ ]] || { printf "Installation cancelled.\n"; exit 1; }
+ fi
+ if [[ $PM == pacman ]]; then sudo pacman -S --needed --noconfirm "${mapped[@]}"; elif [[ $PM == xbps ]]; then sudo xbps-install -Sy "${mapped[@]}"; else sudo apt-get update; sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "${mapped[@]}"; fi
 }
 install_deps
 command -v python3 >/dev/null || { echo 'ERROR: python3 missing'; exit 1; }; command -v mpv >/dev/null || { echo 'ERROR: mpv missing'; exit 1; }
