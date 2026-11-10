@@ -227,7 +227,7 @@ release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Status, disclaimer and how it's made
 
-**Status: beta.** Local music, Navidrome, Sveriges Radio and YouTube are solid and covered by unit and service tests. Spotify depends on Spotify's APIs and on librespot,.
+**Status: beta.** Local music, Navidrome, Sveriges Radio and YouTube are solid and covered by unit and service tests. Spotify depends on Spotify's APIs and on librespot.
 
 NIRUX and every niru* project are made by me, Nicklas Rudolfsson
 ([@nirucon](https://github.com/nirucon)), for me. They are tailored to my own
