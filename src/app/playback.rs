@@ -238,6 +238,9 @@ impl App {
         self.state().spotify_polling = false;
         self.waker.wake();
         self.player.stop();
+        // Wake again: a loop that checked the player before it stopped must
+        // not sleep through its next interval.
+        self.waker.wake();
         if self.state().is_spotify() {
             let app = self.arc();
             let app2 = self.arc();
@@ -251,6 +254,15 @@ impl App {
         self.state().playback_state.state = "stopped".into();
         self.mpris().changed(&["PlaybackStatus", "Metadata"]);
         let _ = self.statistics_sync.run_async(false, None);
+    }
+
+    /// 1.x `PlaybackController.stop(ui, clear)`.
+    pub fn playback_stop(&self, ui: Option<&UiRef>, clear: bool) {
+        if clear {
+            self.stop_and_clear(ui)
+        } else {
+            self.stop_playback(ui)
+        }
     }
 
     /// User-facing Stop: clears the playback session and Now Playing.
@@ -1011,8 +1023,12 @@ impl App {
 
     fn ticker_loop(self: Arc<Self>) {
         let mut last_sync = monotonic();
-        while let Some(wait) = self.ticker_wanted() {
-            self.waker.sleep(wait);
+        loop {
+            let token = self.waker.token();
+            let Some(wait) = self.ticker_wanted() else {
+                break;
+            };
+            self.waker.sleep_since(token, wait);
             if self.sleep_check() {
                 if let Some(u) = self.ui() {
                     let u2 = u.clone();
@@ -1064,6 +1080,7 @@ impl App {
             .spawn(move || {
                 let mut last = String::new();
                 loop {
+                    let token = app.waker.token();
                     let owned = {
                         let st = app.state();
                         gen == st.radio_poll_generation
@@ -1100,7 +1117,8 @@ impl App {
                             u.post(Box::new(move || u2.invalidate()));
                         }
                     }
-                    app.waker.sleep(if t.source == "sr" { 45.0 } else { 15.0 });
+                    app.waker
+                        .sleep_since(token, if t.source == "sr" { 45.0 } else { 15.0 });
                 }
                 let mut st = app.state();
                 if st.radio_poll_generation == gen {

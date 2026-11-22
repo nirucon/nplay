@@ -594,6 +594,7 @@ impl App {
             let started = monotonic();
             let rid = requested.id.clone();
             loop {
+                let token = app.waker.token();
                 {
                     let st = app.state();
                     if !(request == st.playback_request
@@ -617,7 +618,7 @@ impl App {
                             last_observed = Some(observed.clone());
                         }
                         if observed != rid {
-                            app.waker.sleep(if monotonic() - started < 20.0 { 0.5 } else { 2.0 });
+                            app.waker.sleep_since(token, if monotonic() - started < 20.0 { 0.5 } else { 2.0 });
                             continue;
                         }
                         let mut incoming = ps.track.clone().unwrap_or_default();
@@ -667,7 +668,7 @@ impl App {
                     }
                     Err(e) => error!("Spotify reconciliation failed · {}", crate::redact::redact_text(&e.to_string())),
                 }
-                app.waker.sleep(1.0);
+                app.waker.sleep_since(token, 1.0);
             }
             let st = app.state();
             info!(
@@ -711,6 +712,7 @@ impl App {
 
     fn spotify_poll_loop(self: Arc<Self>, ui: Option<UiRef>, gen: u64, tgen: u64) {
         loop {
+            let token = self.waker.token();
             let (old_playing, old_index, old_id) = {
                 let st = self.state();
                 if !(st.spotify_polling
@@ -733,7 +735,7 @@ impl App {
                         "Spotify poll failed · {}",
                         crate::redact::redact_text(&e.to_string())
                     );
-                    self.waker.sleep(1.0);
+                    self.waker.sleep_since(token, 1.0);
                     continue;
                 }
             };
@@ -853,7 +855,7 @@ impl App {
                 // Nothing audible: stop polling (no wake-ups while paused).
                 break;
             }
-            self.waker.sleep(1.0);
+            self.waker.sleep_since(token, 1.0);
         }
         let mut st = self.state();
         if gen == st.playback_generation && tgen == st.spotify_track_generation {

@@ -548,13 +548,18 @@ impl Waker {
         self.cv.notify_all();
     }
 
-    /// Sleep up to `secs`; returns early when woken.
-    pub fn sleep(&self, secs: f64) {
+    /// The current wake count; pass it to `sleep_since`.
+    pub fn token(&self) -> u64 {
+        *self.gen.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Sleep up to `secs`, returning early when woken after `token` was taken
+    /// (a wake between the caller's checks and this call is never lost).
+    pub fn sleep_since(&self, token: u64, secs: f64) {
         let g = self.gen.lock().unwrap_or_else(|e| e.into_inner());
-        let start = *g;
         let _ = self
             .cv
-            .wait_timeout_while(g, Duration::from_secs_f64(secs.max(0.0)), |x| *x == start);
+            .wait_timeout_while(g, Duration::from_secs_f64(secs.max(0.0)), |x| *x == token);
     }
 }
 
@@ -1165,4 +1170,34 @@ pub fn cover_id(url: &str) -> String {
         .find(|(k, _)| k == "id")
         .map(|(_, v)| v)
         .unwrap_or_default()
+}
+
+/// Terminal columns of `text` (combining and format characters take none,
+/// East Asian wide/full-width characters two): 1.x `ui._cell_width`, for
+/// prompt implementations.
+pub fn cell_width(text: &str) -> usize {
+    use unicode_width::UnicodeWidthChar;
+    text.chars()
+        .map(|c| {
+            if is_format_char(c) {
+                0
+            } else {
+                c.width().unwrap_or(1)
+            }
+        })
+        .sum()
+}
+
+fn is_format_char(c: char) -> bool {
+    matches!(c as u32, 0xAD | 0x600..=0x605 | 0x61C | 0x6DD | 0x70F | 0x180E | 0x200B..=0x200F
+        | 0x202A..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F | 0xFEFF | 0xFFF9..=0xFFFB)
+}
+
+/// A key that a text prompt inserts (1.x `ui._printable_input`): printable,
+/// and not Esc, Tab, CR or LF.
+pub fn printable_input(c: char) -> bool {
+    !c.is_control()
+        && !is_format_char(c)
+        && !matches!(c, '\u{2028}' | '\u{2029}')
+        && (c == ' ' || !c.is_whitespace())
 }

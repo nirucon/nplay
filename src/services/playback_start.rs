@@ -94,7 +94,7 @@ impl MpvStartCoordinator {
         ui.invalidate();
         let app = app.clone();
         let ui = ui.clone();
-        let _ = std::thread::Builder::new().name(format!("nplay-mpv-{request}")).spawn(move || {
+        let _ = std::thread::Builder::new().name(format!("nplay-start-{request}")).spawn(move || {
             let (src, id) = (t.source.clone(), t.id.clone());
             let res = (|| -> Result<Option<(Track, u128)>> {
                 let (track, url, started) = prepare(&app, t)?;
