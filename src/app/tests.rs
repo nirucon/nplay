@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-static SERIAL: Mutex<()> = Mutex::new(());
+use crate::player::MPV_TESTS as SERIAL;
 
 /// One App per test in its own XDG tree. The env is process-wide, so App
 /// tests are serialized and keep the guard for their whole run.

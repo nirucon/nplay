@@ -790,6 +790,10 @@ fn trunc(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
+/// Serialises every test that runs mpv players (they count process threads).
+#[cfg(test)]
+pub(crate) static MPV_TESTS: Mutex<()> = Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -805,7 +809,7 @@ mod tests {
         d
     }
 
-    static MPV_TESTS: Mutex<()> = Mutex::new(());
+    use super::MPV_TESTS;
 
     /// Threads of this process whose name starts with `prefix`.
     fn threads(prefix: &str) -> usize {
