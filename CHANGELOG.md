@@ -1,3 +1,10 @@
+# NPLAY 2.0.1: installer fix
+
+- Fix: `install.sh` read `/etc/os-release` into its own variables, so the
+  distribution's `VERSION` replaced NPLAY's and the download of the release
+  binary failed (seen on Debian 13). Nothing was changed on the system when it
+  failed. The installer test now covers the download path.
+
 # NPLAY 2.0.0: rewritten in Rust
 
 NPLAY is now one static Rust binary (ratatui/crossterm, rusqlite, lofty,

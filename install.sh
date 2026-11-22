@@ -41,7 +41,12 @@ BIN="$HOME/.local/bin"; CFG="${XDG_CONFIG_HOME:-$HOME/.config}/nplay"
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 B='\033[1m'; D='\033[2m'; G='\033[32m'; Y='\033[33m'; R='\033[31m'; N='\033[0m'
 printf "${B}NPLAY ${VERSION}${N}\n${D}Terminal audio player · installer${N}\n\n"
-if [[ -r /etc/os-release ]]; then . /etc/os-release; else ID=unknown; ID_LIKE=""; fi
+# Read only what is needed: sourcing os-release would overwrite VERSION.
+ID=unknown; ID_LIKE=""; PRETTY_NAME=""; NAME=""
+if [[ -r /etc/os-release ]]; then
+ eval "$(sed -n -E 's/^(ID|ID_LIKE|PRETTY_NAME|NAME)=(.*)$/OS_\1=\2/p' /etc/os-release)"
+ ID="${OS_ID:-unknown}"; ID_LIKE="${OS_ID_LIKE:-}"; PRETTY_NAME="${OS_PRETTY_NAME:-}"; NAME="${OS_NAME:-}"
+fi
 id="${ID:-unknown}"; like=" ${ID_LIKE:-} "
 if [[ "$id" =~ ^(arch|omarchy|cachyos|endeavouros)$ ]] || [[ "$like" == *" arch "* ]]; then PM=pacman
 elif [[ "$id" =~ ^(void|voidlinux)$ ]]; then PM=xbps
@@ -109,7 +114,7 @@ elif [[ $MODE == prebuilt ]]; then
 else
  [[ $(uname -m) == x86_64 ]] || { echo "No prebuilt release for $(uname -m); use ./install.sh --build" >&2; exit 1; }
  TMP=$(mktemp -d)
- URL="https://github.com/nirucon/nplay/releases/download/v${VERSION}"
+ URL="${NPLAY_RELEASE_URL:-https://github.com/nirucon/nplay/releases/download/v${VERSION}}"
  printf "Downloading the prebuilt NPLAY ${VERSION}…\n"
  if command -v curl >/dev/null; then
   curl -fsSL --retry 3 -o "$TMP/nplay" "$URL/nplay" && curl -fsSL --retry 3 -o "$TMP/SHA256SUMS" "$URL/SHA256SUMS" \

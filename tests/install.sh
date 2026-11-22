@@ -48,4 +48,14 @@ run bash "$SB/pkg/uninstall.sh" >"$SB/out" 2>&1 || fail "uninstall failed"
 [ -f "$H/.local/share/nplay/library.db" ] || fail "uninstall removed data"
 run bash "$SB/pkg/uninstall.sh" --purge >"$SB/out" 2>&1 || fail "purge failed"
 [ ! -e "$H/.local/share/nplay" ] || fail "purge kept data"
+# Auto mode from a source checkout: downloads the release (here file://) and
+# verifies it; /etc/os-release must not override the version.
+SRC="$SB/src"; REL="$SB/rel"; mkdir -p "$SRC" "$REL"
+cp "$HERE/install.sh" "$HERE/config.example.ini" "$SRC/"
+V=$("$BIN" --version | awk '{print $NF}')
+printf '[package]\nname = "nplay"\nversion = "%s"\n' "$V" > "$SRC/Cargo.toml"
+cp "$BIN" "$REL/nplay"; (cd "$REL" && sha256sum nplay > SHA256SUMS)
+run env NPLAY_RELEASE_URL="file://$REL" bash "$SRC/install.sh" >"$SB/out" 2>&1 || { cat "$SB/out"; fail "auto install failed"; }
+grep -q "Downloading the prebuilt NPLAY $V" "$SB/out" || { cat "$SB/out"; fail "wrong version in download"; }
+"$H/.local/bin/nplay" --version | grep -q "^NPLAY $V" || fail "auto install binary"
 echo "install/uninstall ok"
