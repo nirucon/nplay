@@ -5,7 +5,7 @@
 //! `nplay`, CanQuit, no Raise, no track list, URI schemes file/http/https)
 //! and `org.mpris.MediaPlayer2.Player` (PlayPause, Play, Pause, Next,
 //! Previous, Stop, Seek, SetPosition; PlaybackStatus, LoopStatus, Rate,
-//! Shuffle, Metadata, Volume (settable), Position, Minimum/MaximumRate,
+//! Shuffle, Metadata, Volume (LoopStatus, Shuffle and Volume settable), Position, Minimum/MaximumRate,
 //! CanGoNext/Previous/Play/Pause/Seek/Control). It does not depend on the app:
 //! the engine implements `MprisControl`.
 //!
@@ -58,6 +58,10 @@ pub trait MprisControl: Send + Sync {
     fn stop(&self);
     fn seek_relative(&self, secs: f64);
     fn volume_relative(&self, delta_percent: f64);
+    /// MPRIS `LoopStatus` write: `off`, `track` or `context`.
+    fn set_repeat(&self, _mode: &str) {}
+    /// MPRIS `Shuffle` write.
+    fn set_shuffle(&self, _on: bool) {}
     fn quit(&self);
     fn snapshot(&self) -> MprisState;
 }
@@ -393,12 +397,25 @@ impl PlayerIface {
         loop_status(&self.st().repeat_mode).into()
     }
     #[zbus(property)]
+    fn set_loop_status(&self, value: String) {
+        let mode = match value.as_str() {
+            "Track" => "track",
+            "Playlist" => "context",
+            _ => "off",
+        };
+        self.shared.control.set_repeat(mode);
+    }
+    #[zbus(property)]
     fn rate(&self) -> f64 {
         1.0
     }
     #[zbus(property)]
     fn shuffle(&self) -> bool {
         self.st().shuffle_mode != "off"
+    }
+    #[zbus(property)]
+    fn set_shuffle(&self, value: bool) {
+        self.shared.control.set_shuffle(value);
     }
     #[zbus(property)]
     fn metadata(&self) -> HashMap<String, OwnedValue> {
