@@ -642,6 +642,26 @@ impl MprisControl for MprisBridge {
             a.playback_volume(delta);
         }
     }
+    fn set_repeat(&self, mode: &str) {
+        if let Some(a) = self.0.upgrade() {
+            for _ in 0..3 {
+                if a.state().repeat_mode == mode {
+                    break;
+                }
+                a.cycle_repeat(a.ui().as_ref());
+            }
+        }
+    }
+    fn set_shuffle(&self, on: bool) {
+        if let Some(a) = self.0.upgrade() {
+            for _ in 0..3 {
+                if (a.state().shuffle_mode != "off") == on {
+                    break;
+                }
+                a.cycle_shuffle(a.ui().as_ref());
+            }
+        }
+    }
     fn quit(&self) {
         if let Some(a) = self.0.upgrade() {
             if let Some(u) = a.ui() {
