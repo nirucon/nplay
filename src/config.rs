@@ -173,13 +173,11 @@ pub const DEFAULT_KEYS: &[(&str, &str)] = &[
     ("home", "g"),
 ];
 
-pub const DEFAULT_STATS_URL: &str = "https://n.rudolfsson.net/?r=api&endpoint=statistics/music/v3";
+pub const DEFAULT_STATS_URL: &str =
+    "https://n.rudolfsson.net/?r=api&endpoint=statistics/music/v3";
 
 fn defaults() -> Vec<(&'static str, String)> {
-    let music = paths::home_dir()
-        .join("Music")
-        .to_string_lossy()
-        .into_owned();
+    let music = paths::home_dir().join("Music").to_string_lossy().into_owned();
     let d: &[(&str, &str)] = &[
         ("statistics_enabled", "true"),
         ("statistics_sync_enabled", "false"),
@@ -420,7 +418,8 @@ impl Config {
     }
 
     pub fn save_statistics_token(&self, token: &str) -> Result<(), String> {
-        if token.is_empty() || token.contains('\n') || token.contains('\r') || token.len() > 1024 {
+        if token.is_empty() || token.contains('\n') || token.contains('\r') || token.len() > 1024
+        {
             return Err("Invalid token".into());
         }
         let mut g = self.inner.lock().unwrap();
@@ -489,8 +488,7 @@ mod tests {
 
     #[test]
     fn ini_roundtrip_like_configparser() {
-        let t =
-            "[general]\nMusic_Dirs = /a\nx: y\n# c\n; d\nempty =\n\n[keys]\nplay_pause = SPACE\n";
+        let t = "[general]\nMusic_Dirs = /a\nx: y\n# c\n; d\nempty =\n\n[keys]\nplay_pause = SPACE\n";
         let i = Ini::parse(t);
         assert_eq!(i.get("general", "music_dirs"), Some("/a"));
         assert_eq!(i.get("general", "x"), Some("y"));
