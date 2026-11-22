@@ -921,3 +921,27 @@ fn stats_refresh_preserves_selection_and_stack() {
     r.r().view.title = "PLAYLISTS".into();
     assert!(!a.refresh_statistics_view(&ui));
 }
+
+#[test]
+fn spotify_play_failure_restores_session() {
+    let e = env();
+    let a = &e.app;
+    let prev = track("keep", "K");
+    {
+        let mut st = a.state();
+        st.current = Some(prev.clone());
+        st.resume_candidate = true;
+    }
+    let (r, ui) = rec();
+    // Not connected (and no cached librespot credentials): fails fast,
+    // never touches Now Playing, and reports through ui.error.
+    a.play(Track::new("spotify", "sp1", "Remote"), Some(&ui), false);
+    assert!(wait_for(20.0, || !r.r().errors.is_empty()));
+    let (title, _msg) = r.r().errors[0].clone();
+    assert_eq!(title, "Spotify playback unavailable");
+    let st = a.state();
+    assert_eq!(st.current.as_ref().unwrap().id, "keep");
+    assert!(st.spotify_pending_track_id.is_empty());
+    assert!(st.resume_candidate);
+    assert!(!r.r().statuses.is_empty());
+}

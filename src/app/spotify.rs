@@ -596,12 +596,18 @@ impl App {
             loop {
                 let token = app.waker.token();
                 {
-                    let st = app.state();
+                    let mut st = app.state();
                     if !(request == st.playback_request
                         && stg == st.spotify_track_generation
                         && pg == st.playback_generation
                         && st.spotify_pending_track_id == rid)
                     {
+                        break;
+                    }
+                    if !st.spotify_state.is_playing {
+                        // Paused before confirmation: keep the requested
+                        // metadata and stop polling until playback resumes.
+                        st.spotify_pending_track_id.clear();
                         break;
                     }
                 }

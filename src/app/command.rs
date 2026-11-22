@@ -516,6 +516,10 @@ impl App {
     /// local receiver closes before `stop_playback` so the background
     /// Spotify pause cannot respawn it.
     pub fn shutdown(&self) {
+        if self.current().is_some() && self.player.active() {
+            let pos = self.playback_position();
+            self.checkpoint(Some(pos), None);
+        }
         self.save_state();
         self.spotify.local.close();
         self.stop_playback(None);

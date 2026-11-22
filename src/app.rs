@@ -72,7 +72,14 @@
 //! # Public API (summary)
 //! - Construction: [`App::new`] (real config/data dirs, starts MPRIS when
 //!   `mpris_enabled`), [`App::with_options`] ([`AppOptions`]: mpv binary,
-//!   no MPRIS, ... for tests). [`App::set_ui`]/[`App::ui`].
+//!   no MPRIS, ... for tests). [`App::attach_ui`] (call once when the UI
+//!   starts: sets the UI, starts the background library refresh and the
+//!   resume artwork refresh), [`App::set_ui`]/[`App::ui`].
+//! - The engine keeps its own time: UIs do NOT need to call `checkpoint`,
+//!   `statistics_tracker.tick`, `sleep_check` or the statistics sync from
+//!   their loops (the playback ticker does). A TUI only polls
+//!   `playback_position()`/`playback_duration()` for drawing while
+//!   `playback_playing()`.
 //! - Handles (pub fields): `cfg`, `db`, `statistics`, `statistics_tracker`,
 //!   `statistics_sync`, `player`, `sr`, `yt`, `spotify`, `artwork_cache`,
 //!   `notifier`, `events`, `session`, `mpris()`.
@@ -746,6 +753,15 @@ impl App {
 
     pub fn set_ui(&self, ui: Option<UiRef>) {
         *self.ui.lock().unwrap_or_else(|e| e.into_inner()) = ui;
+    }
+
+    /// Attach a UI the way the 1.x UI loop started: remember it, refresh the
+    /// library in the background (`auto_library_refresh`) and refresh a
+    /// restored Navidrome track's artwork.
+    pub fn attach_ui(&self, ui: &UiRef) {
+        self.set_ui(Some(ui.clone()));
+        self.background_library_refresh(Some(ui));
+        self.hydrate_resume_artwork(Some(ui));
     }
 
     /// `ui` when given, else the attached UI.

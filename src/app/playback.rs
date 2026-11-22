@@ -709,6 +709,9 @@ impl App {
         if self.player.active() {
             self.statistics_tracker.flush(self.playback_playing());
             self.player.toggle();
+            // The ticker stops while paused: keep the resume point exact.
+            let pos = self.playback_position();
+            self.checkpoint(Some(pos), None);
             self.state_changed(&["PlaybackStatus"]);
             // Radio metadata is polled only while the stream plays.
             if let Some(t) = self.current() {
