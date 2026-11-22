@@ -31,6 +31,7 @@ done
 VERSION="${NPLAY_VERSION:-}"
 [[ -z $VERSION && -f Cargo.toml ]] && VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
 [[ -z $VERSION && -f VERSION ]] && VERSION="$(sed -n '1p' VERSION)"
+if [[ -z $VERSION && -x ./nplay && -f ./nplay ]]; then VERSION="$( (./nplay --version 2>/dev/null || :) | awk '{print $NF}')"; fi
 [[ -n $VERSION ]] || { echo "Cannot determine the NPLAY version (set NPLAY_VERSION)." >&2; exit 1; }
 
 APPDEST="$HOME/.local/lib/nplay"
