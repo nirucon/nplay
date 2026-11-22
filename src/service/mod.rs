@@ -29,10 +29,12 @@
 //! - `set_socket_path` tells the backend its endpoint (for `snapshot()`'s
 //!   `backend.socket` and `service.info`); `close()` runs once on shutdown.
 
+pub mod backend;
 pub mod probe;
 pub mod protocol;
 pub mod server;
 
+pub use backend::run_service;
 pub use protocol::RpcError;
 pub use server::{serve, ControlServer};
 
