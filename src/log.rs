@@ -23,6 +23,10 @@ static SINK: OnceLock<Mutex<Sink>> = OnceLock::new();
 static DEBUG: OnceLock<bool> = OnceLock::new();
 
 pub fn log_path() -> PathBuf {
+    // Unit tests never write into the user's real log.
+    if cfg!(test) {
+        return std::env::temp_dir().join(format!("nplay-test-{}.log", unsafe { libc::getuid() }));
+    }
     paths::state().join("nplay.log")
 }
 

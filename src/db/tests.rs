@@ -750,7 +750,9 @@ fn config_scan_uses_music_dirs_and_batch() {
 #[test]
 #[ignore]
 fn python_made_library_opens() {
-    let Some(dir) = std::env::var_os("NPLAY_PY_DATA") else { return };
+    let Some(dir) = std::env::var_os("NPLAY_PY_DATA") else {
+        return;
+    };
     let dir = PathBuf::from(dir);
     let db = DB::open_in(&dir.join("library.db"), &dir).unwrap();
     assert_eq!(db.schema_version().unwrap(), 5);
@@ -770,8 +772,14 @@ fn python_made_library_opens() {
 #[test]
 #[ignore]
 fn print_metadata_for_dir() {
-    let Some(dir) = std::env::var_os("NPLAY_TAG_DIR") else { return };
-    let mut v: Vec<_> = std::fs::read_dir(dir).unwrap().flatten().map(|e| e.path()).collect();
+    let Some(dir) = std::env::var_os("NPLAY_TAG_DIR") else {
+        return;
+    };
+    let mut v: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .collect();
     v.sort();
     for p in v {
         println!("TAGS {:?} {:?}", p.file_name().unwrap(), tags::metadata(&p));
