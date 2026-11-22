@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""Synthetic CAVA raw-output harness for rendering measurements only.
+
+It is not audio capture and must never be presented as real visualization.
+The real NIRUAMP CAVA path is exercised by installing cava; this harness only
+lets CI and resource reports measure the drawing/polling cost deterministically.
+"""
+import math
+import sys
+import time
+
+bars = 32
+for i, arg in enumerate(sys.argv):
+    if arg == "-p" and i + 1 < len(sys.argv):
+        try:
+            for line in open(sys.argv[i + 1], encoding="utf-8"):
+                if "bars" in line:
+                    bars = int(line.split("=")[1].strip())
+        except Exception:
+            pass
+start = time.monotonic()
+while True:
+    t = time.monotonic() - start
+    frame = bytes(int(127 + 120 * math.sin(t * 2.2 + i * 0.34)) for i in range(bars))
+    try:
+        sys.stdout.buffer.write(frame)
+        sys.stdout.buffer.flush()
+    except BrokenPipeError:
+        break
+    time.sleep(1 / 30)
