@@ -28,7 +28,8 @@
 //! - `cmd(args) -> Option<Value>`: one IPC command on the current socket;
 //!   `Some(data)` on mpv `success` (data may be `Null`), else `None`.
 //!   `prop(name)`, `prop_f64(name)`, `prop_bool(name)`.
-//! - `active()`: mpv alive, socket present and not idle.
+//! - `active()`: mpv alive, socket present and not idle; `running()`: alive
+//!   and socket present (idle or not).
 //! - `toggle()`, `set_pause(bool)`, `set_volume(v)` (0..150), `set_position(s)`,
 //!   `seek(delta_s)`, `volume(delta)`, `mute()`, `position()`, `duration()`.
 //! - `stop()`: SIGTERM, reap (1.5 s), SIGKILL, reap (2 s), remove own socket.
@@ -678,6 +679,13 @@ impl Player {
 
     pub fn prop_bool(&self, name: &str) -> Option<bool> {
         self.prop(name).and_then(|v| v.as_bool())
+    }
+
+    /// mpv alive and its IPC socket present (idle or not): the 1.x service's
+    /// `proc.poll() is None and sock and os.path.exists(sock)`.
+    pub fn running(&self) -> bool {
+        let mut st = lock(&self.inner.state);
+        st.proc.as_mut().is_some_and(alive) && st.sock.as_ref().is_some_and(|s| s.exists())
     }
 
     pub fn active(&self) -> bool {
