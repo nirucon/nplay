@@ -650,7 +650,10 @@ impl Tui {
                 t();
                 self.sh.st().dirty = true;
             }
-            Msg::Signal(_) => self.sh.st().running = false,
+            Msg::Signal(sig) => {
+                crate::debug!("tui: signal {sig}, exiting");
+                self.sh.st().running = false
+            }
             Msg::Input(ev) => {
                 self.sh.tele_force.store(true, Ordering::Release);
                 self.input(ev);

@@ -1,6 +1,4 @@
 //! NPLAY: terminal music, radio and podcast player built around mpv.
-// Development of the Rust port: the modules are filled in phases.
-#![allow(dead_code)]
 
 #[macro_use]
 pub mod log;

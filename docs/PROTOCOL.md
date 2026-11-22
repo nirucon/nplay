@@ -238,6 +238,10 @@ its authorize control when `spotify_local_authorize` is absent (NPLAY ≤ 1.8.0)
 | 1.1 | 1.8.0 | `visualization.subscribe` / `unsubscribe` / `status`, capability `visualization_stream` |
 | 1.2 | 1.8.1 | `spotify.local_authorize`, notifications `spotify.local_auth` and `service.error`, capabilities `spotify_local_authorize` / `spotify_local` / `spotify_local_authorized`, `settings.get` local receiver state |
 
+NPLAY 2.0.0 (the Rust rewrite) keeps protocol 1.2 unchanged: for the same
+session it answers byte for byte like 1.8.2 (`tests/protocol_compat.py`
+against `tests/golden/protocol.txt`), so NIRUAMP 0.3.2 and later keep working.
+
 ## Visualization stream (1.1)
 
 A client chooses the transport from the handshake capabilities:
@@ -274,7 +278,7 @@ A client chooses the transport from the handshake capabilities:
   backoff (1–30 s); the stream simply resumes.
 - `visualization.stop` never ends another connection's stream.
 
-Measured on Python 3.12 (per frame, encoding only): 32 bars `json` 3.8 µs /
+Measured with NPLAY 1.8.0 on Python 3.12 (per frame, encoding only): 32 bars `json` 3.8 µs /
 125 B, `b64` 2.6 µs / 67 B; 96 bars `json` 7.5 µs / 349 B, `b64` 3.2 µs /
 151 B. The old `visualization.data` response cost 4.3–8.0 µs to encode plus a
 request parse, dispatch and two thread hand-offs per frame. `b64` is the

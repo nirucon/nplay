@@ -11,7 +11,7 @@ Minimalist, keyboard-first terminal music, radio and podcast player built around
 NPLAY is the music player I live in: one terminal UI for my local library,
 Navidrome, Spotify, YouTube audio and Sveriges Radio, driven entirely from
 the keyboard. Playback is done by mpv (and librespot or Spotify Connect for
-Spotify); NPLAY itself is Python.
+Spotify); NPLAY itself is one static Rust binary (since 2.0.0; 1.x was Python).
 
 NPLAY is a complete, standalone player. It does not need NIRUX, X11, a display
 server or NIRUAMP, and runs fine over SSH. Within NIRUX it is an optional
@@ -35,7 +35,8 @@ through NPLAY's local control service (`nplay --serve`).
   resume, ReplayGain normalization (on by default) and optional gapless
   playback.
 - **Terminal UI:** search, Universal Quick Find (`Ctrl+P`), a command prompt
-  with completion and history, Kitty artwork (text fallback elsewhere), CAVA
+  with completion and history, artwork through the kitty graphics protocol
+  (kitty and NIRUTERM; text fallback elsewhere), CAVA
   visualizer, desktop notifications and MPRIS media keys.
 - **Themes:** built-in Niru Noir (follows the terminal colours), Satie,
   C. Larsson, Hackerman, Othala, Ingwaz, Commodore 64 and an Omarchy-follow
@@ -51,13 +52,14 @@ through NPLAY's local control service (`nplay --serve`).
 
 ## Requirements
 
-- Linux with Python 3 and `mpv` (required). Debian, Arch and Void are
-  supported by the installer (`apt-get`, `pacman`, `xbps-install`), including
-  Ubuntu, Omarchy and other derivatives.
-- Recommended: `cava` (visualizer), `yt-dlp` (YouTube), Mutagen (local tags
-  and artwork), `notify-send` (notifications), python D-Bus/GObject (MPRIS).
+- Linux x86_64 and `mpv` (required). The release binary is static (musl): no
+  Python, no libraries. Debian, Arch and Void are supported by the installer
+  (`apt-get`, `pacman`, `xbps-install`), including Ubuntu, Omarchy and other
+  derivatives. Tags, embedded artwork, MPRIS and HTTPS are built in.
+- Recommended: `cava` (visualizer), `yt-dlp` (YouTube), `notify-send`
+  (notifications).
 - Optional: `librespot` for local Spotify playback (the installer only offers
-  it when your repository has it), Kitty for image artwork.
+  it when your repository has it), kitty or NIRUTERM for image artwork.
 
 ## Installation
 
@@ -84,16 +86,21 @@ nplay
 ```
 
 The installer detects the package manager, lists missing required and
-recommended packages and asks before using `sudo` to install them. Without a
+recommended packages and asks before using `sudo` to install them. It
+downloads the prebuilt binary of the version in `Cargo.toml` from the GitHub
+release and verifies it against `SHA256SUMS` (`./install.sh --build` builds
+from the checkout with cargo instead, `--prebuilt` uses a `./nplay` beside the
+script, as in the release tarball). Without a
 terminal it does not ask: `./install.sh --yes` (or `NPLAY_ASSUME_YES=1`, which
 `nirux extras install` sets when it runs unattended) installs them, otherwise
 missing recommended packages are skipped and missing required ones stop the
 install. It then
 backs up your irreplaceable state (`library.db`, `statistics.sqlite3`, Spotify
 credentials, `config.ini`, `secrets.ini`) to
-`~/.local/state/nplay/upgrades/TIMESTAMP/`, replaces only the application code
-in `~/.local/lib/nplay`, writes the `~/.local/bin/nplay` launcher and a
-desktop entry, and copies `config.example.ini` to `~/.config/nplay/config.ini`
+`~/.local/state/nplay/upgrades/TIMESTAMP/`, installs the binary as
+`~/.local/bin/nplay` and a desktop entry, removes the program code of a
+Python NPLAY 1.x (`~/.local/lib/nplay`; your data stays) and stops a running
+1.x service so the next client starts the new one, and copies `config.example.ini` to `~/.config/nplay/config.ini`
 if you have no configuration yet. Configuration, the library database,
 playlists, favorites and history are preserved on upgrades. More:
 [INSTALL.md](INSTALL.md).
@@ -161,8 +168,7 @@ Reference: [CONFIGURATION.md](CONFIGURATION.md) (all keys, Spotify setup),
 
 | Path | Purpose |
 |---|---|
-| `~/.local/bin/nplay` | Launcher |
-| `~/.local/lib/nplay/` | Application code (replaced on upgrade) |
+| `~/.local/bin/nplay` | The program (one static binary) |
 | `~/.config/nplay/` | `config.ini`, `secrets.ini`, `themes/` |
 | `~/.local/share/nplay/library.db` | Local index, playlists, favorites, history, resume positions, custom radio stations |
 | `~/.local/share/nplay/statistics.sqlite3` | Listening statistics and the offline sync queue |
@@ -177,8 +183,8 @@ respected.
 
 - Run `nplay --doctor` first: it checks dependencies, configuration and the
   privacy of logs and runtime files, with a one-line fix for each warning.
-- **No visualizer / no YouTube / no tags.** Install `cava`, `yt-dlp` or
-  Mutagen; NPLAY works without them and says what is missing.
+- **No visualizer / no YouTube.** Install `cava` or `yt-dlp`; NPLAY works
+  without them and says what is missing.
 - **Spotify local playback fails.** It needs Premium and a `librespot` binary
   with a working audio backend; otherwise choose an external Spotify Connect
   device under **Spotify → Devices**. Local authorization is a one-time step.
@@ -201,7 +207,7 @@ nirux extras uninstall nplay --purge   # also delete data, configuration and sta
 Standalone, from a checkout:
 
 ```sh
-./uninstall.sh          # removes the launcher, ~/.local/lib/nplay and the desktop entry
+./uninstall.sh          # removes the binary (or a 1.x install) and the desktop entry
 ./uninstall.sh --purge  # also removes ~/.local/share/nplay, ~/.config/nplay,
                         # ~/.local/state/nplay and ~/.cache/nplay
 ```
@@ -214,15 +220,40 @@ deletes them. NPLAY 1.8.1 and older shipped an `uninstall.sh` that deleted
 
 ## Building from source
 
-There is nothing to compile. The CI checks:
+NPLAY is Rust (ratatui/crossterm, rusqlite with bundled SQLite, lofty, ureq
+with rustls, zbus). The CI checks:
 
 ```sh
-python3 -m compileall -q nplay
-python3 -m unittest discover -s tests -v
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+cargo build --release
+python3 tests/protocol_compat.py target/release/nplay | diff -u tests/golden/protocol.txt -
+tests/tui.sh target/release/nplay       # terminal UI end to end in a pty
+tests/install.sh target/release/nplay   # a 1.x install is replaced, data kept
 ```
 
-`tools/fake-mpv` and `tools/fake-librespot` are test doubles used by the
-tests. The control protocol is specified in [docs/PROTOCOL.md](docs/PROTOCOL.md);
+`tests/golden/protocol.txt` is the control-service session recorded from the
+Python NPLAY 1.8.2: the 2.x service must answer byte for byte the same (with
+volatile values masked), which keeps NIRUAMP 0.5.x and 0.6.x working.
+`tools/fake-mpv`, `tools/fake-cava` and `tools/fake-librespot` are test
+doubles. The release workflow builds a static `x86_64-unknown-linux-musl`
+binary and publishes it with `SHA256SUMS`.
+
+### Performance (2.0.0 against 1.8.2)
+
+Measured on othala in the same sandbox (offline local library, fake mpv and
+CAVA, no MPRIS):
+
+| | Python 1.8.2 | Rust 2.0.0 |
+|---|---|---|
+| Service idle, no client | 30.7 MB RSS, 2 threads, 0 % CPU | 7.6 MB RSS, 1 thread, 0 % CPU |
+| Service playing, one NIRUAMP-style spectrum subscriber | 36.6 MB, 7 threads | 9.7 MB, 7 threads |
+| Terminal UI first full frame | 105 to 122 ms | 2 to 5 ms |
+| Terminal UI idle | 30.8 MB RSS | 8.6 to 9 MB RSS, 0 wakeups |
+
+NIRUAMP 0.6.0 (`tests/xvfb.sh` of the niruamp repo) and 0.5.2
+(`tests/niruamp052.sh`) pass against the 2.0.0 service. The control protocol is specified in [docs/PROTOCOL.md](docs/PROTOCOL.md);
 release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Status, disclaimer and how it's made

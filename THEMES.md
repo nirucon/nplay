@@ -1,6 +1,6 @@
 # Custom themes — NPLAY 1.5.5
 
-NPLAY was built primarily for a personal Linux setup. Custom themes let other users customize colors without changing the player or installing Python plugins.
+NPLAY was built primarily for a personal Linux setup. Custom themes let other users customize colors without changing the player or installing plugins.
 
 ## In NPLAY
 
@@ -45,7 +45,7 @@ Run `nplay --check-theme /path/to/my-theme.toml` to validate, or `nplay --list-t
 
 ## Safety and compatibility
 
-- TOML only; no Python or shell execution.
+- TOML only; no code or shell execution.
 - Unknown keys, invalid hex values, reserved built-in IDs and symlinks are rejected.
 - Files larger than 16 KiB are rejected; at most 128 custom theme files are scanned.
 - Built-in themes and Omarchy-follow mode remain unchanged.

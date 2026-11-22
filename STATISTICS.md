@@ -63,7 +63,7 @@ To enable integration, the server must document and confirm:
 
 ## Testing
 
-`python3 -m unittest discover -s tests -v` tests real elapsed time, pause/resume, disabled mode, five sources, idempotent event insertion, outbox acknowledgment, identity persistence, file permissions, and period filtering.
+`cargo test` tests real elapsed time, pause/resume, disabled mode, five sources, idempotent event insertion, outbox acknowledgment, identity persistence, file permissions, and period filtering.
 
 ## Upgrade / rollback
 

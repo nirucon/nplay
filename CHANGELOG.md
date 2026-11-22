@@ -1,3 +1,42 @@
+# NPLAY 2.0.0: rewritten in Rust
+
+NPLAY is now one static Rust binary (ratatui/crossterm, rusqlite, lofty,
+ureq/rustls, zbus) instead of a Python program. Every feature, key, command,
+config key, file and data location of 1.8.2 is kept.
+
+Faster and lighter (othala, same sandbox)
+- Control service idle: 7.6 MB RSS and 1 thread (1.8.2: 30.7 MB, 2 threads),
+  0 % CPU and 0 wakeups; playing with a spectrum subscriber 9.7 MB (36.6 MB).
+- Terminal UI: first frame in 2 to 5 ms (105 to 122 ms), 8.6 to 9 MB RSS,
+  0 wakeups while idle. Background work (checkpoints, statistics, Spotify and
+  radio polling) runs only while something plays.
+
+Compatibility
+- `library.db`, `statistics.sqlite3`, `session.json`, `config.ini`,
+  `secrets.ini`, the librespot credentials and the artwork cache open
+  unchanged (same schemas, names and formats).
+- The control service speaks protocol 1.2 byte for byte like 1.8.2 (checked
+  against a recorded 1.8.2 session in CI); NIRUAMP 0.5.2 and 0.6.0 pass their
+  end-to-end tests against it.
+
+Changes
+- Artwork is drawn with the kitty graphics protocol directly (kitty and
+  NIRUTERM), no `kitten` needed.
+- Local tags and embedded covers are read by lofty (no Mutagen); MPRIS is
+  built in (no Python D-Bus bindings). WAV files with RIFF INFO tags now show
+  their tags.
+- `[keys]` in config.ini is honoured by the terminal UI.
+- A paused mpv no longer counts as playing for MPRIS and the statistics.
+- Fixes found while porting: the service's `browse local artists`,
+  favorites cleanup of old container rows and `spotify.devices` failed in 1.8.2.
+- The doctor's first line is `runtime OK` instead of `python OK`.
+
+Install
+- `install.sh` downloads the release binary and verifies it with SHA-256
+  (`--build` builds with cargo, `--prebuilt` uses a binary beside the script),
+  backs up your data, removes the Python 1.x program code and stops a running
+  1.x service. `uninstall.sh` keeps your data unless `--purge`.
+
 # NPLAY 1.8.2 — a safe uninstaller and unattended installs
 
 Install and uninstall

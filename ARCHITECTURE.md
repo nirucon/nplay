@@ -1,23 +1,34 @@
 # NPLAY architecture
 
-NPLAY separates terminal UI, playback, providers, local persistence, artwork, themes and visualization.
+NPLAY 2.0 is one Rust binary. It separates the terminal UI, the engine,
+playback transports, providers, local persistence, artwork, themes,
+visualization and the control service. The 1.x design (Python) was kept
+module for module, so the sections below still describe the behaviour; the
+names in parentheses are the 1.x modules.
 
-- `app.py`: orchestration, navigation actions, playback context and providers.
-- `ui.py`: curses UI, responsive geometry, key handling and contextual help.
-- `player.py`: mpv IPC and end-of-track handling. mpv starts idle; media is sent with `loadfile` over the private IPC socket, never in argv. mpv's log is piped through redaction.
-- `redact.py`: the one credential redaction helper (`redact_url`, `redact_text`) used by every log path.
-- `privacy.py`: `--doctor` privacy checks.
-- `db.py`: SQLite local library, playlists, favorites, history and radio stations.
-- `providers.py`: Navidrome, Sveriges Radio and YouTube adapters.
-- `artwork.py`: asynchronous/cached artwork acquisition and Kitty rendering.
-- `visualizer.py`: one persistent CAVA raw-output process sampled by the UI; its frame callback drives the service's pushed visualization stream. The config lives in the private runtime directory.
-- `theme.py`: NPLAY palettes and best-effort Omarchy palette discovery.
+- `src/main.rs`: the argparse-compatible CLI (`--doctor`, `--scan`, `--serve`, ...).
+- `src/app.rs`, `src/app/*` (`app.py`): the engine. Playback sessions with generation guards, contexts, queue, shuffle/repeat, resume (`session.json`), Spotify dispatch, statistics, sleep timer, the `:` commands, `doctor`. It talks to a front end through the `Ui` trait, implemented by the terminal UI and by the service. A ticker thread (checkpoints, listening tracker, sleep, sync) runs only while something plays.
+- `src/navigation.rs` (`navigation.py`): source browsing, menus and provider actions.
+- `src/services/` (`services/*.py`): federated search, settings, the serialized mpv start coordinator.
+- `src/player.rs` (`player.py`): mpv IPC and end-of-track handling. mpv starts idle; media is sent with `loadfile` over the private IPC socket, never in argv. mpv's log is piped through redaction.
+- `src/redact.rs`, `src/log.rs`: the one credential redaction helper used by every log path; the private rotating log.
+- `src/privacy.rs`: `--doctor` privacy checks.
+- `src/db.rs`, `src/db/*` (`db.py`): SQLite local library (same schema and file), scanner with lofty tags and embedded art, playlists, favorites, history, ratings, discoveries, bookmarks and radio stations.
+- `src/statistics/`: the statistics store, tracker and opt-in HTTPS sync.
+- `src/providers.rs`, `src/providers/*` (`providers.py`, `services/radio.py`): Navidrome, Sveriges Radio, YouTube (yt-dlp) and NPLAY Radio.
+- `src/spotify.rs`, `src/spotify/*` (`spotify.py`): Web API, OAuth PKCE, Connect devices, the librespot receiver lifecycle.
+- `src/artwork_cache.rs`, `src/artwork.rs`: the bounded artwork cache and native kitty graphics protocol output (kitty and NIRUTERM; 1.x spawned `kitten icat`).
+- `src/visualizer.rs` (`visualizer.py`): one persistent CAVA raw-output process; its frame callback drives the terminal visualizer and the service's pushed visualization stream. The config lives in the private runtime directory.
+- `src/mpris.rs`, `src/notifications.rs`: MPRIS2 over D-Bus (zbus) and `notify-send` notifications.
+- `src/theme.rs` (`theme.py`, `theme_actions.py`): palettes, TOML custom themes and Omarchy palette discovery.
+- `src/tui/` (`ui.py`, `ui_render.py`): the ratatui/crossterm terminal UI. It blocks on one channel (input, signals, CAVA frames, engine wakes) and redraws only when something changed.
+- `src/service/` (`service/*.py`): the JSON-RPC control service: protocol framing identical to 1.x, the Unix socket server, the backend over the engine.
 
-The UI must remain functional without Kitty, CAVA, yt-dlp or a configured network provider. mpv and Python are core runtime dependencies. Provider failures are contained so they do not terminate the player.
+The UI must remain functional without Kitty, CAVA, yt-dlp or a configured network provider. mpv is the core runtime dependency. Provider failures are contained so they do not terminate the player.
 
 ## Spotify boundary (1.1.3)
 
-`nplay/spotify.py` is an optional provider/control boundary. It owns Spotify OAuth PKCE, token refresh, Web API mapping and Spotify Connect commands. Spotify catalog objects are mapped into the existing `Track` model so list rendering, artwork, Quick Find and NPLAY cross-source playlists can reuse established UI paths.
+`src/spotify.rs` is an optional provider/control boundary. It owns Spotify OAuth PKCE, token refresh, Web API mapping and Spotify Connect commands. Spotify catalog objects are mapped into the existing `Track` model so list rendering, artwork, Quick Find and NPLAY cross-source playlists can reuse established UI paths.
 
 Spotify is intentionally *not* routed through `Player`/mpv. `App` exposes small playback-dispatch helpers so the UI can operate either mpv-backed sources or Spotify Connect without destabilizing the established mpv path. Spotify state is polled in a background thread and interpolated locally for a smooth transport clock; network polling never runs at the UI frame rate.
 
@@ -31,7 +42,7 @@ Local librespot process startup, Spotify Connect registration and Player API act
 
 The managed librespot receiver never outlives NPLAY and there is never more than one per cache directory (`~/.local/share/nplay/spotify-local/cache`):
 
-- **Dies with its owner.** librespot runs in its own process group and is started with `PR_SET_PDEATHSIG=SIGKILL` (Linux, `preexec_fn` + ctypes `prctl`), so a crash or SIGKILL of NPLAY kills it too. The death signal is tied to the *thread* that forked, so every spawn goes through one long-lived spawner thread, never a short-lived worker. Normal quit, Ctrl+C, SIGTERM and SIGHUP (terminal closed) in the terminal UI, and SIGTERM, SIGINT, SIGHUP, `service.shutdown` and `--idle-exit` in the service, all run an orderly `close()` (SIGTERM, then SIGKILL after 3 s); `close()` also refuses later starts, so a Spotify pause still in flight at exit cannot respawn the receiver. An `atexit` hook closes any engine left open.
+- **Dies with its owner.** librespot runs in its own process group and is started with `PR_SET_PDEATHSIG=SIGKILL` (Linux, `prctl` in `pre_exec`), so a crash or SIGKILL of NPLAY kills it too. The death signal is tied to the *thread* that forked, so every spawn goes through one long-lived spawner thread, never a short-lived worker. Normal quit, Ctrl+C, SIGTERM and SIGHUP (terminal closed) in the terminal UI, and SIGTERM, SIGINT, SIGHUP, `service.shutdown` and `--idle-exit` in the service, all run an orderly `close()` (SIGTERM, then SIGKILL after 3 s); `close()` also refuses later starts, so a Spotify pause still in flight at exit cannot respawn the receiver. An `atexit` hook closes any engine left open.
 - **One receiver per cache.** Before spawning, NPLAY takes a flock (`$XDG_RUNTIME_DIR/nplay/librespot-<hash>.lock`) and scans `/proc` for librespot processes of the same user whose argv has the same `--cache` path (verified in `/proc/<pid>/cmdline`, not by pid alone). A pid file next to the lock (`librespot-<hash>.json`, 0600) records the current receiver and its owner.
 - **Ownership between the terminal UI and the service.** The first NPLAY process that needs local playback owns the receiver. A second NPLAY (terminal or service) whose start finds a receiver whose parent is a live NPLAY process *adopts* it: it controls the same Connect device through the Web API, never spawns a second one, and never stops it on exit. When the owner exits the receiver dies with it, and the other NPLAY starts its own on its next Spotify action. A receiver without a live NPLAY parent (an orphan left by NPLAY ≤ 1.8.0, reparented to `systemd --user`) is terminated and replaced. AUTHORIZE (OAuth) and the one automatic recovery restart always replace the receiver, whoever owns it.
 - **Authorization gate.** A normal start without librespot's cached `credentials.json` (in `--system-cache`) fails immediately with `LocalSpotifyNotAuthorized` ("Local Spotify playback is not authorized yet · choose Spotify → Local playback → AUTHORIZE") and spends no registration wait or automatic restart. AUTHORIZE (terminal menu, or the service's `spotify.local_authorize`) moves an existing `credentials.json` aside (librespot ignores `--enable-oauth` while it exists), starts librespot with `--enable-oauth`, opens the consent URL that librespot prints with NPLAY's own browser candidates (`$BROWSER`, `omarchy-launch-browser`, the desktop default, known browsers, `xdg-open`; librespot's own opener is disabled through a private no-op `xdg-open` on its PATH so only one tab opens), and succeeds when librespot caches fresh credentials. On failure or timeout the previous credentials are restored.
@@ -44,11 +55,11 @@ Spotify CAVA visualization listens to the host audio stack through CAVA's normal
 
 ## Desktop notification boundary (1.1.3)
 
-`nplay/notifications.py` owns freedesktop notifications. Providers and transport code only signal a confirmed track change through the notifier. The notifier deduplicates by source/track identity, resolves artwork in a background thread and never participates in the critical playback path.
+`src/notifications.rs` owns freedesktop notifications. Providers and transport code only signal a confirmed track change through the notifier. The notifier deduplicates by source/track identity, resolves artwork in a background thread and never participates in the critical playback path.
 
 ## 1.0 desktop and library model
 
-MPRIS is an optional boundary in `nplay/mpris.py`; absence of dbus-python/GLib never prevents NPLAY from starting. Player state remains authoritative in `App`/`Player`. Ratings, discoveries and listening statistics live in the existing SQLite database and are migrated additively; NPLAY 1.1.4 uses schema 4. NPLAY never writes ratings back into audio tags.
+MPRIS is an optional boundary in `src/mpris.rs`; a missing D-Bus session never prevents NPLAY from starting. Player state remains authoritative in `App`/`Player`. Ratings, discoveries and listening statistics live in the existing SQLite database and are migrated additively; NPLAY 1.1.4 uses schema 4. NPLAY never writes ratings back into audio tags.
 
 The local scanner remains incremental, WAL-backed and batch-written. `Scan Changes` compares mtimes; `Full Rescan` invalidates scan mtimes and re-reads metadata. Offline roots remain non-destructive.
 

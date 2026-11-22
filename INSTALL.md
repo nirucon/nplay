@@ -1,4 +1,4 @@
-# NPLAY 1.6.0 — installation
+# NPLAY 2.0.0: installation
 
 NPLAY is a custom application made for Nicklas Rudolfsson, but is fully functional for other users.
 
@@ -9,17 +9,20 @@ NPLAY is a custom application made for Nicklas Rudolfsson, but is fully function
 - Debian
 - Ubuntu and Debian-derived systems
 
-Run:
+Run, from a checkout or an extracted release:
 
 ```sh
-unzip NPLAY-1.6.0.zip
-cd NPLAY-1.6.0
-./install.sh
+./install.sh            # downloads the prebuilt static binary and verifies its SHA-256
+./install.sh --build    # or: build from the checkout with cargo
 ```
 
-The installer detects `pacman` or `apt`, shows missing dependencies, asks before using `sudo`, and installs the required/recommended runtime packages when available. Core playback requires Python 3 and mpv. CAVA enables visualization, yt-dlp enables YouTube audio, and Mutagen enables robust local metadata and embedded artwork.
+The installer detects `pacman`, `xbps-install` or `apt`, shows missing dependencies, asks before using `sudo`, and installs the required/recommended runtime packages when available. Core playback requires mpv; NPLAY itself is one static binary with tags, artwork, MPRIS and HTTPS built in. CAVA enables visualization, yt-dlp enables YouTube audio and notify-send desktop notifications.
 
-The installer performs an atomic application-code replacement. Existing configuration, secrets, local library database, playlists, favorites, history and state under XDG config/data/state directories are not replaced.
+The installer replaces the binary atomically. Existing configuration, secrets, local library database, playlists, favorites, history and state under XDG config/data/state directories are not replaced.
+
+## Upgrading from NPLAY 1.x (Python)
+
+NPLAY 2.0.0 opens every 1.x file unchanged: `library.db` (same schema), `statistics.sqlite3`, `session.json`, `config.ini`, `secrets.ini`, the librespot credentials and the artwork cache. The installer backs these up to `~/.local/state/nplay/upgrades/TIMESTAMP/`, removes the 1.x program code in `~/.local/lib/nplay` and its launcher script, and stops a running 1.x control service (SIGTERM, which saves the session) so that NIRUAMP starts the new one. A terminal NPLAY 1.x that is still open keeps playing until you quit it. Python, Mutagen and the Python D-Bus bindings are no longer needed.
 
 librespot is optional. If it is unavailable, Spotify can use an external Spotify Connect device, including a separately managed `go-librespot` receiver. NPLAY's managed Local Playback mode still requires a librespot binary with a working audio backend.
 
@@ -30,7 +33,7 @@ nplay --doctor
 nplay
 ```
 
-Kitty is not required. In Kitty, NPLAY can render image artwork through `kitten icat`. In other terminals the application remains usable and substitutes a compact source placeholder instead of leaving broken image space.
+Kitty is not required. In kitty and NIRUTERM, NPLAY draws image artwork itself with the kitty graphics protocol. In other terminals the application remains usable and substitutes a compact source placeholder instead of leaving broken image space.
 
 ## Upgrade data safety
 

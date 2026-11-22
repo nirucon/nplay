@@ -1,7 +1,7 @@
 //! The `:` command prompt, UI-side helpers ported from 1.x `UI` (activate,
 //! Actions menu, random play), `--doctor` and the exit sequence.
 
-use super::{clip, say, track_rows, App, Row, UiRef};
+use super::{clip, track_rows, App, Row, UiRef};
 use crate::model::Track;
 
 /// The 29 completions of the `:` prompt (1.x `UI.prompt` order).
@@ -530,9 +530,5 @@ impl App {
     /// Statistics: `nplay --stats-sync-now` (the coordinator prints it).
     pub fn statistics_sync_once(&self) -> std::result::Result<usize, crate::statistics::SyncError> {
         self.statistics_sync.once()
-    }
-
-    pub(crate) fn say_opt(&self, ui: Option<&UiRef>, msg: &str) {
-        say(ui, msg)
     }
 }

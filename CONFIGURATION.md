@@ -116,6 +116,6 @@ Linux desktop notifications are enabled by default. `track_notifications = false
 
 ## NPLAY 1.0 settings
 
-`mpris_enabled=true` enables the optional Linux MPRIS2 service. If D-Bus Python/GLib bindings are unavailable NPLAY starts normally and Diagnostics reports MPRIS as unavailable.
+`mpris_enabled=true` enables the optional Linux MPRIS2 service. If no D-Bus session is available NPLAY starts normally and Diagnostics reports MPRIS as unavailable.
 
 `preferred_source=local` controls which source is surfaced first when Universal Quick Find identifies the same artist/title across multiple providers. Provider-specific results are always retained.
