@@ -117,7 +117,7 @@ def start():
 scr = Screen()
 pid, fd, t0 = start()
 
-def pump(secs):
+def pump(secs, once=False):
     end = time.monotonic() + secs
     while True:
         left = end - time.monotonic()
@@ -128,12 +128,13 @@ def pump(secs):
             except OSError: return
             if not d: return
             scr.feed(d)
+            if once: return
 
 def wait_for(pred, secs, what):
     end = time.monotonic() + secs
     while time.monotonic() < end:
         if pred(): return True
-        pump(0.05)
+        pump(0.05, once=True)
     if pred(): return True
     failures.append(what)
     print("FAIL:", what); print(scr.text())
