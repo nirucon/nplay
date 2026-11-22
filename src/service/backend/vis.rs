@@ -141,7 +141,9 @@ impl VisHub {
             if !vis.start() {
                 return Err(backend_error(
                     "CAVA could not start",
-                    Some(json!({"remedy": "Check the PipeWire/PulseAudio monitor source and restart cava"})),
+                    Some(
+                        json!({"remedy": "Check the PipeWire/PulseAudio monitor source and restart cava"}),
+                    ),
                 ));
             }
             self.ensure_monitor(st);
@@ -167,7 +169,11 @@ impl VisHub {
         let mut st = lock(&self.inner.st);
         self.ensure_locked(&mut st)?;
         st.last = monotonic();
-        let bars = st.vis.as_ref().map(Visualizer::bars).unwrap_or(DEFAULT_BARS);
+        let bars = st
+            .vis
+            .as_ref()
+            .map(Visualizer::bars)
+            .unwrap_or(DEFAULT_BARS);
         Ok(json!({"available": true, "bars": bars}))
     }
 
@@ -227,7 +233,9 @@ impl VisHub {
             },
         );
         self.inner.cv.notify_all();
-        Ok(json!({"subscribed": true, "bars": bars, "fps": fps, "encoding": encoding, "source": "cava"}))
+        Ok(
+            json!({"subscribed": true, "bars": bars, "fps": fps, "encoding": encoding, "source": "cava"}),
+        )
     }
 
     /// Start pushing once the subscribe response is queued.

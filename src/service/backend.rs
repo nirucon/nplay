@@ -54,8 +54,8 @@ mod tests;
 mod vis;
 
 use self::pyval::{
-    backend_error, clip_chars, flag, float_or, int_or, internal, params_error, py_float,
-    py_int, py_str, str_or,
+    backend_error, clip_chars, flag, float_or, int_or, internal, params_error, py_float, py_int,
+    py_str, str_or,
 };
 use super::protocol::{RpcError, MAX_TRACKS, PROTOCOL_MINOR, PROTOCOL_VERSION};
 use super::{Backend, FrameSink, NotifyFn};
@@ -106,7 +106,8 @@ pub const META_ALLOW: &[&str] = &[
 ];
 
 /// Rows that are not playable media (they must be expanded first).
-pub const CONTAINER_KINDS: &[&str] = &["album", "artist", "playlist", "program", "folder", "device"];
+pub const CONTAINER_KINDS: &[&str] =
+    &["album", "artist", "playlist", "program", "folder", "device"];
 
 /// Settings writable through `settings.set` (sorted, as `settings.get` lists them).
 pub const SAFE_SETTINGS: &[&str] = &[
@@ -361,8 +362,7 @@ impl ServiceBackend {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         if let Some(n) = n {
-            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| n(method, params)))
-                .is_err()
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| n(method, params))).is_err()
             {
                 error!("service notification failed");
             }
@@ -373,7 +373,12 @@ impl ServiceBackend {
     fn sanitize_queue_state(&self) {
         let changed = {
             let mut st = self.app.state();
-            let queue: Vec<Track> = st.queue.iter().filter(|t| playable_track(t)).cloned().collect();
+            let queue: Vec<Track> = st
+                .queue
+                .iter()
+                .filter(|t| playable_track(t))
+                .cloned()
+                .collect();
             let later: Vec<Track> = st
                 .later_queue
                 .iter()
@@ -573,7 +578,8 @@ impl ServiceBackend {
         let duration = self.app.playback_duration();
         let st = self.app.state().clone();
         let t = st.current.as_ref();
-        let wire_all = |xs: &[Track]| -> Vec<Value> { xs.iter().map(|x| self.track_wire(x)).collect() };
+        let wire_all =
+            |xs: &[Track]| -> Vec<Value> { xs.iter().map(|x| self.track_wire(x)).collect() };
         let radio = match t {
             Some(t) if t.kind == "radio" => {
                 Value::Object(st.radio_info.get(&t.id).cloned().unwrap_or_default())
@@ -615,10 +621,7 @@ impl ServiceBackend {
             .map(|spec| {
                 let (enabled, configured) = match spec.id {
                     "local" => (true, app.db.count().unwrap_or(0) > 0),
-                    "navidrome" => (
-                        cfg.getbool("navidrome_enabled", true),
-                        app.nav_configured(),
-                    ),
+                    "navidrome" => (cfg.getbool("navidrome_enabled", true), app.nav_configured()),
                     "spotify" => (
                         cfg.getbool("spotify_enabled", false),
                         app.spotify_configured(),
@@ -1462,7 +1465,9 @@ impl ServiceBackend {
                 } else {
                     let s = value.as_str();
                     if key == "preferred_source"
-                        && !s.is_some_and(|s| ["local", "navidrome", "spotify", "youtube"].contains(&s))
+                        && !s.is_some_and(|s| {
+                            ["local", "navidrome", "spotify", "youtube"].contains(&s)
+                        })
                     {
                         return Err(params_error("unknown preferred source", None));
                     }
@@ -1481,7 +1486,10 @@ impl ServiceBackend {
     }
 
     fn navidrome_setup(&self, p: &Map<String, Value>) -> Result<Value, RpcError> {
-        let url = str_or(p, "url", "").trim().trim_end_matches('/').to_string();
+        let url = str_or(p, "url", "")
+            .trim()
+            .trim_end_matches('/')
+            .to_string();
         let user = str_or(p, "user", "").trim().to_string();
         let password = str_or(p, "password", "");
         if !(url.starts_with("http://") || url.starts_with("https://"))
@@ -1518,7 +1526,9 @@ impl ServiceBackend {
         if self.app.cfg.get("spotify_client_id", "").trim().is_empty() {
             return Err(backend_error(
                 "Spotify client ID is not configured",
-                Some(json!({"remedy": "Set spotify_client_id in NPLAY settings or run `nplay` and use Spotify setup"})),
+                Some(
+                    json!({"remedy": "Set spotify_client_id in NPLAY settings or run `nplay` and use Spotify setup"}),
+                ),
             ));
         }
         if self.app.spotify_configured() {
@@ -1546,7 +1556,9 @@ impl ServiceBackend {
         if !self.app.spotify.local.available() {
             return Err(backend_error(
                 "librespot is not installed",
-                Some(json!({"remedy": "Install librespot for local Spotify playback, or use an external Spotify Connect device"})),
+                Some(
+                    json!({"remedy": "Install librespot for local Spotify playback, or use an external Spotify Connect device"}),
+                ),
             ));
         }
         let timeout = match p.get("timeout").filter(|v| !v.is_null()) {
@@ -1664,8 +1676,10 @@ impl ServiceBackend {
                 .extension()
                 .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
                 .unwrap_or_default();
-            if ![".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wav", ".webm"]
-                .contains(&ext.as_str())
+            if ![
+                ".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wav", ".webm",
+            ]
+            .contains(&ext.as_str())
             {
                 return Err(params_error("unsupported media file", None));
             }
@@ -1979,8 +1993,7 @@ impl ServiceBackend {
         for id in lock(&self.events).drain(..) {
             self.app.events.unsubscribe(id);
         }
-        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.app.shutdown())).is_err()
-        {
+        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.app.shutdown())).is_err() {
             error!("service shutdown failed");
         }
     }

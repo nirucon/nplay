@@ -91,7 +91,11 @@ impl ServiceBackend {
             "all" | "search" => {
                 let xs = db.search(query, limit + offset).map_err(internal)?;
                 let xs: Vec<Track> = xs.into_iter().skip(offset as usize).take(lim).collect();
-                let q = if query.is_empty() { "all tracks" } else { query };
+                let q = if query.is_empty() {
+                    "all tracks"
+                } else {
+                    query
+                };
                 (xs, format!("Local music · {q}"))
             }
             "artists" => {
@@ -202,13 +206,17 @@ impl ServiceBackend {
         limit: i64,
         args: &Map<String, Value>,
     ) -> Result<Items, crate::service::RpcError> {
-        let n = self.app.nav().ok_or_else(|| {
-            backend_error("Navidrome is disabled or not configured", None)
-        })?;
+        let n = self
+            .app
+            .nav()
+            .ok_or_else(|| backend_error("Navidrome is disabled or not configured", None))?;
         let lim = limit as usize;
         let id = || arg_or(args, "id", query);
         let (r, title) = match section {
-            "newest" => (n.albums("newest", lim), "Navidrome · Recently added".to_string()),
+            "newest" => (
+                n.albums("newest", lim),
+                "Navidrome · Recently added".to_string(),
+            ),
             "random" => (n.albums("random", lim), "Navidrome · Random albums".into()),
             "random_tracks" => (n.random_tracks(lim), "Navidrome · Random tracks".into()),
             "artists" => (n.artists(), "Navidrome · Artists".into()),
@@ -342,7 +350,10 @@ impl ServiceBackend {
         let sp = &app.spotify;
         let id = || arg_or(args, "id", query);
         let (r, title) = match section {
-            "search" => (sp.search(query, limit as usize), format!("Spotify · {query}")),
+            "search" => (
+                sp.search(query, limit as usize),
+                format!("Spotify · {query}"),
+            ),
             "playlists" => (sp.playlists(), "Spotify · Playlists".into()),
             "playlist" => (sp.playlist_items(&id()), "Spotify playlist".into()),
             "album" => (sp.album_tracks(&id()), "Spotify album".into()),
@@ -399,7 +410,9 @@ impl ServiceBackend {
                 "navidrome",
                 "Navidrome",
                 Box::new(move || match a.nav() {
-                    Some(n) => n.search_library(&q, limit, 10, 5).map_err(|e| e.to_string()),
+                    Some(n) => n
+                        .search_library(&q, limit, 10, 5)
+                        .map_err(|e| e.to_string()),
                     None => Err("'NoneType' object has no attribute 'search_library'".into()),
                 }),
             ));

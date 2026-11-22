@@ -70,10 +70,7 @@ pub fn py_repr(v: &Value) -> String {
             out.push(q);
             out
         }
-        Value::Array(a) => format!(
-            "[{}]",
-            a.iter().map(py_repr).collect::<Vec<_>>().join(", ")
-        ),
+        Value::Array(a) => format!("[{}]", a.iter().map(py_repr).collect::<Vec<_>>().join(", ")),
         Value::Object(o) => format!(
             "{{{}}}",
             o.iter()
@@ -156,8 +153,12 @@ pub fn py_int(v: Option<&Value>) -> Result<i64, RpcError> {
                 }
             }
         }
-        Value::String(s) => parse_int_text(s)
-            .ok_or_else(|| bad(format!("invalid literal for int() with base 10: {}", py_repr(v)))),
+        Value::String(s) => parse_int_text(s).ok_or_else(|| {
+            bad(format!(
+                "invalid literal for int() with base 10: {}",
+                py_repr(v)
+            ))
+        }),
         other => Err(bad(format!(
             "int() argument must be a string, a bytes-like object or a real number, not '{}'",
             type_name(other)
