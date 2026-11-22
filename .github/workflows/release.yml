@@ -1,0 +1,43 @@
+name: Release
+on:
+  push: { tags: ['v*'] }
+permissions: { contents: write }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: "rustfmt, clippy", targets: x86_64-unknown-linux-musl }
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools python3
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      # A static binary: runs on Debian, Arch and Void.
+      - run: cargo build --release --locked --target x86_64-unknown-linux-musl
+      - name: Identity
+        run: test "$(./target/x86_64-unknown-linux-musl/release/nplay --version | awk '{print $2}')" = "${GITHUB_REF_NAME#v}"
+      - name: Protocol conformance with NPLAY 1.8.2
+        run: |
+          python3 tests/protocol_compat.py target/x86_64-unknown-linux-musl/release/nplay > protocol.txt
+          diff -u tests/golden/protocol.txt protocol.txt
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp target/x86_64-unknown-linux-musl/release/nplay install.sh uninstall.sh config.example.ini dist/
+          printf '%s\n' "${GITHUB_REF_NAME#v}" > dist/VERSION
+          (cd dist && sha256sum nplay install.sh uninstall.sh config.example.ini VERSION > SHA256SUMS)
+          (cd dist && tar -czf "nplay-${GITHUB_REF_NAME#v}-x86_64-linux-musl.tar.gz" nplay VERSION install.sh uninstall.sh config.example.ini SHA256SUMS)
+          cd dist && sha256sum nplay *.tar.gz install.sh uninstall.sh config.example.ini VERSION > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          make_latest: true
+          files: |
+            dist/nplay
+            dist/nplay-*-x86_64-linux-musl.tar.gz
+            dist/install.sh
+            dist/uninstall.sh
+            dist/config.example.ini
+            dist/VERSION
+            dist/SHA256SUMS
+          generate_release_notes: true

@@ -1,0 +1,20 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: "rustfmt, clippy" }
+      - run: sudo apt-get update && sudo apt-get install -y python3
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+      - name: Protocol conformance with NPLAY 1.8.2
+        run: |
+          python3 tests/protocol_compat.py target/release/nplay > protocol.txt
+          diff -u tests/golden/protocol.txt protocol.txt
+      - name: Installer and uninstaller keep user data
+        run: tests/install.sh target/release/nplay

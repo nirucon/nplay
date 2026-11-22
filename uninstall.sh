@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Remove NPLAY. By default only the program is removed: the launcher, the
-# application code and the desktop entry. Your data (library database,
+# Remove NPLAY. By default only the program is removed: the binary (or the
+# Python 1.x launcher and code) and the desktop entry. Your data (library database,
 # playlists, favorites, history, statistics, Spotify credentials), the
 # configuration and the state are kept. `--purge` removes those too.
 set -euo pipefail
@@ -29,6 +29,7 @@ CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/nplay"
 # Stop a running NPLAY service and its receiver so nothing keeps playing from
 # code that is about to disappear. Only this user's processes are matched.
 pkill -u "$(id -u)" -f 'python3 -m nplay\.app' 2>/dev/null || :
+pkill -u "$(id -u)" -f '(^|/)nplay --serve' 2>/dev/null || :
 
 rm -f "$BIN" "$DESKTOP"
 rm -rf "$APP"
