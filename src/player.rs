@@ -254,7 +254,10 @@ fn ipc(sock: &Path, args: &[Value]) -> Option<Value> {
 }
 
 fn success(r: &Option<Value>) -> bool {
-    r.as_ref().and_then(|v| v.get("error")).and_then(Value::as_str) == Some("success")
+    r.as_ref()
+        .and_then(|v| v.get("error"))
+        .and_then(Value::as_str)
+        == Some("success")
 }
 
 /// `path`, `idle-active` and `core-idle` of a specific (generation) socket.
@@ -351,7 +354,9 @@ fn wait_timeout(c: &mut Child, secs: f64) -> bool {
 }
 
 fn random_hex(n: usize) -> String {
-    (0..n).map(|_| format!("{:02x}", fastrand::u8(..))).collect()
+    (0..n)
+        .map(|_| format!("{:02x}", fastrand::u8(..)))
+        .collect()
 }
 
 impl Default for Player {
@@ -678,8 +683,8 @@ impl Player {
     pub fn active(&self) -> bool {
         {
             let mut st = lock(&self.inner.state);
-            let ok = st.proc.as_mut().is_some_and(alive)
-                && st.sock.as_ref().is_some_and(|s| s.exists());
+            let ok =
+                st.proc.as_mut().is_some_and(alive) && st.sock.as_ref().is_some_and(|s| s.exists());
             if !ok {
                 return false;
             }
@@ -696,7 +701,11 @@ impl Player {
     }
 
     pub fn set_volume(&self, v: f64) {
-        let v = if v.is_finite() { v.clamp(0.0, 150.0) } else { 0.0 };
+        let v = if v.is_finite() {
+            v.clamp(0.0, 150.0)
+        } else {
+            0.0
+        };
         self.cmd(&[json!("set_property"), json!("volume"), json!(v)]);
     }
 
@@ -796,6 +805,22 @@ mod tests {
         d
     }
 
+    static MPV_TESTS: Mutex<()> = Mutex::new(());
+
+    /// Threads of this process whose name starts with `prefix`.
+    fn threads(prefix: &str) -> usize {
+        std::fs::read_dir("/proc/self/task")
+            .map(|rd| {
+                rd.flatten()
+                    .filter(|e| {
+                        std::fs::read_to_string(e.path().join("comm"))
+                            .is_ok_and(|c| c.starts_with(prefix))
+                    })
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+
     /// tools/fake-mpv relative to the crate, when python3 is available.
     fn fake_mpv() -> Option<String> {
         let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("tools/fake-mpv");
@@ -849,7 +874,10 @@ mod tests {
         assert_eq!(normalization_mode(false, "album", "A", &["A", "A"]), "no");
         assert_eq!(normalization_mode(true, "Track", "A", &["A", "A"]), "track");
         assert_eq!(normalization_mode(true, "album", "", &[]), "album");
-        assert_eq!(normalization_mode(true, "auto", "A", &["A", "A", ""]), "album");
+        assert_eq!(
+            normalization_mode(true, "auto", "A", &["A", "A", ""]),
+            "album"
+        );
         assert_eq!(normalization_mode(true, "auto", "A", &["A"]), "track");
         assert_eq!(normalization_mode(true, "auto", "A", &["A", "B"]), "track");
         assert_eq!(normalization_mode(true, "auto", "", &["A", "A"]), "track");
@@ -875,10 +903,8 @@ mod tests {
                 let mut c = c;
                 // An unrelated broadcast event first: must be skipped.
                 c.write_all(b"{\"event\":\"audio-reconfig\"}\n").unwrap();
-                c.write_all(
-                    format!("{}\n", json!({"error":"success","data":value})).as_bytes(),
-                )
-                .unwrap();
+                c.write_all(format!("{}\n", json!({"error":"success","data":value})).as_bytes())
+                    .unwrap();
             }
         });
         assert_eq!(
@@ -949,6 +975,7 @@ mod tests {
             eprintln!("skipping: fake-mpv or python3 missing");
             return;
         };
+        let _serial = lock(&MPV_TESTS);
         let d = tmpdir("fake");
         let wav = d.join("tone.wav");
         write_wav(&wav, 1.0);
@@ -1009,6 +1036,12 @@ mod tests {
         assert_ne!(unsafe { libc::kill(first as i32, 0) }, 0);
         p.stop();
         assert_eq!(*ended.0.lock().unwrap(), 0);
+        // Stopped means idle: no event or log thread is left.
+        let end = Instant::now() + Duration::from_secs(2);
+        while threads("nplay-mpv-") > 0 && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(threads("nplay-mpv-"), 0);
         let _ = std::fs::remove_dir_all(d);
     }
 
@@ -1020,6 +1053,7 @@ mod tests {
             eprintln!("skipping: mpv missing");
             return;
         }
+        let _serial = lock(&MPV_TESTS);
         let d = tmpdir("real");
         let wav = d.join("tone.wav");
         write_wav(&wav, 0.6);
@@ -1071,8 +1105,8 @@ mod tests {
         b.extend_from_slice(b"data");
         b.extend_from_slice(&(n * 2).to_le_bytes());
         for i in 0..n {
-            let v = ((i as f64 * 440.0 * std::f64::consts::TAU / rate as f64).sin() * 8000.0)
-                as i16;
+            let v =
+                ((i as f64 * 440.0 * std::f64::consts::TAU / rate as f64).sin() * 8000.0) as i16;
             b.extend_from_slice(&v.to_le_bytes());
         }
         std::fs::write(path, b).unwrap();

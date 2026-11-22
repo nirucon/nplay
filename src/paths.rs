@@ -76,8 +76,7 @@ pub fn private_runtime_dir() -> PathBuf {
             for _ in 0..64 {
                 let p = base.join(format!("nplay-{:08x}", fastrand::u32(..)));
                 if std::fs::create_dir(&p).is_ok() {
-                    let _ =
-                        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o700));
+                    let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o700));
                     return p;
                 }
             }
@@ -138,7 +137,10 @@ pub fn now() -> f64 {
 
 /// Monotonic seconds (Python `time.monotonic()`), CLOCK_MONOTONIC.
 pub fn monotonic() -> f64 {
-    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
     unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
     ts.tv_sec as f64 + ts.tv_nsec as f64 / 1e9
 }

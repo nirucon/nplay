@@ -42,7 +42,13 @@ use zbus::zvariant::{ObjectPath, OwnedValue, Value as ZValue};
 pub const BUS_NAME: &str = "org.mpris.MediaPlayer2.nplay";
 pub const OBJECT_PATH: &str = "/org/mpris/MediaPlayer2";
 pub const PLAYER_IFACE: &str = "org.mpris.MediaPlayer2.Player";
-const DEFAULT_CHANGED: &[&str] = &["PlaybackStatus", "Metadata", "Volume", "LoopStatus", "Shuffle"];
+const DEFAULT_CHANGED: &[&str] = &[
+    "PlaybackStatus",
+    "Metadata",
+    "Volume",
+    "LoopStatus",
+    "Shuffle",
+];
 
 /// What the engine exposes to MPRIS.
 pub trait MprisControl: Send + Sync {
@@ -113,7 +119,11 @@ fn info(m: &Map<String, Value>, k: &str) -> String {
 }
 
 fn first_nonempty(xs: &[&str]) -> String {
-    xs.iter().find(|s| !s.is_empty()).copied().unwrap_or("").to_string()
+    xs.iter()
+        .find(|s| !s.is_empty())
+        .copied()
+        .unwrap_or("")
+        .to_string()
 }
 
 /// Metadata for the current track and, when the cover carries credentials
@@ -125,7 +135,12 @@ pub fn build_metadata(st: &MprisState, cache: &ArtworkCache) -> (Option<Metadata
     let (mut title, mut artist, mut album) = (t.title.clone(), t.artist.clone(), t.album.clone());
     if t.kind == "radio" {
         let i = &st.radio_info;
-        title = first_nonempty(&[&info(i, "program"), &info(i, "song"), &t.title, "Live radio"]);
+        title = first_nonempty(&[
+            &info(i, "program"),
+            &info(i, "song"),
+            &t.title,
+            "Live radio",
+        ]);
         artist = first_nonempty(&[&t.title, &t.artist]);
         album = if t.source == "sr" {
             "Sveriges Radio · LIVE".into()
@@ -143,7 +158,11 @@ pub fn build_metadata(st: &MprisState, cache: &ArtworkCache) -> (Option<Metadata
         if ident.is_empty() { "current" } else { &ident }
     );
     let length = (t.kind != "radio").then(|| {
-        let d = if st.duration > 0.0 { st.duration } else { t.duration };
+        let d = if st.duration > 0.0 {
+            st.duration
+        } else {
+            t.duration
+        };
         (d.max(0.0) * 1_000_000.0) as i64
     });
     let mut fetch = None;
@@ -169,7 +188,11 @@ pub fn build_metadata(st: &MprisState, cache: &ArtworkCache) -> (Option<Metadata
         Some(Metadata {
             trackid,
             title,
-            artist: if artist.is_empty() { vec![] } else { vec![artist] },
+            artist: if artist.is_empty() {
+                vec![]
+            } else {
+                vec![artist]
+            },
             album,
             length,
             art_url,
@@ -243,7 +266,11 @@ impl Shared {
         let _ = std::thread::Builder::new()
             .name("nplay-mpris-art".into())
             .spawn(move || {
-                if me.cache.fetch(&url, 8.0, &crate::artwork_cache::user_agent()).is_some() {
+                if me
+                    .cache
+                    .fetch(&url, 8.0, &crate::artwork_cache::user_agent())
+                    .is_some()
+                {
                     Mpris { shared: me }.changed(&["Metadata"]);
                 }
             });
@@ -345,7 +372,9 @@ impl PlayerIface {
         self.shared.control.stop();
     }
     fn seek(&self, offset: i64) {
-        self.shared.control.seek_relative(offset as f64 / 1_000_000.0);
+        self.shared
+            .control
+            .seek_relative(offset as f64 / 1_000_000.0);
     }
     fn set_position(&self, _track_id: ObjectPath<'_>, position: i64) {
         let st = self.st();
@@ -482,10 +511,14 @@ impl Mpris {
     /// Connect to the session bus and serve the MPRIS objects. Never panics
     /// and never blocks long; without a session bus it returns false.
     pub fn start(&self) -> bool {
+        self.start_on(zbus::blocking::connection::Builder::session())
+    }
+
+    fn start_on(&self, builder: zbus::Result<zbus::blocking::connection::Builder<'_>>) -> bool {
         if self.available() {
             return true;
         }
-        let conn = match zbus::blocking::connection::Builder::session().and_then(|b| b.build()) {
+        let conn = match builder.and_then(|b| b.build()) {
             Ok(c) => c,
             Err(e) => return self.fail(format!("D-Bus session unavailable: {e}")),
         };
@@ -545,7 +578,11 @@ impl Mpris {
         let Some(conn) = lock(&self.shared.conn).clone() else {
             return;
         };
-        let names = if names.is_empty() { DEFAULT_CHANGED } else { names };
+        let names = if names.is_empty() {
+            DEFAULT_CHANGED
+        } else {
+            names
+        };
         let st = self.shared.control.snapshot();
         let mut changed: HashMap<String, OwnedValue> = HashMap::new();
         for n in names {
@@ -654,17 +691,24 @@ mod tests {
         st.track = Some(r);
         st.radio_info.insert("song".into(), Value::from("Tune"));
         let m = build_metadata(&st, &c).0.unwrap();
-        assert_eq!((m.title.as_str(), m.album.as_str()), ("Tune", "Sveriges Radio · LIVE"));
+        assert_eq!(
+            (m.title.as_str(), m.album.as_str()),
+            ("Tune", "Sveriges Radio · LIVE")
+        );
         assert_eq!(m.artist, vec!["P1".to_string()]);
         assert_eq!(m.length, None);
-        st.radio_info.insert("program".into(), Value::from("Morgon"));
+        st.radio_info
+            .insert("program".into(), Value::from("Morgon"));
         assert_eq!(build_metadata(&st, &c).0.unwrap().title, "Morgon");
         let mut x = Track::new("radio", "r", "");
         x.kind = "radio".into();
         st.track = Some(x);
         st.radio_info.clear();
         let m = build_metadata(&st, &c).0.unwrap();
-        assert_eq!((m.title.as_str(), m.album.as_str()), ("Live radio", "Live radio"));
+        assert_eq!(
+            (m.title.as_str(), m.album.as_str()),
+            ("Live radio", "Live radio")
+        );
         assert!(m.artist.is_empty());
         assert!(build_metadata(&MprisState::default(), &c).0.is_none());
         assert!(encode_metadata(&None).is_empty());
@@ -674,7 +718,8 @@ mod tests {
     fn secret_cover_is_never_published() {
         let c = cache("secret");
         let mut t = song();
-        t.cover = "https://nav.example/rest/getCoverArt.view?id=al-1&u=me&t=abcdef123456&s=salt".into();
+        t.cover =
+            "https://nav.example/rest/getCoverArt.view?id=al-1&u=me&t=abcdef123456&s=salt".into();
         let st = MprisState {
             track: Some(t.clone()),
             ..Default::default()
@@ -700,7 +745,14 @@ mod tests {
             Some("https://img.example/c.jpg")
         );
         let enc = encode_metadata(&build_metadata(&st, &c).0);
-        for k in ["mpris:trackid", "xesam:title", "xesam:artist", "xesam:album", "mpris:length", "mpris:artUrl"] {
+        for k in [
+            "mpris:trackid",
+            "xesam:title",
+            "xesam:artist",
+            "xesam:album",
+            "mpris:length",
+            "mpris:artUrl",
+        ] {
             assert!(enc.contains_key(k), "{k}");
         }
         let _ = std::fs::remove_dir_all(&c.root);
@@ -731,6 +783,19 @@ mod tests {
         }
     }
 
+    fn uncached<'a>(c: &zbus::blocking::Connection, iface: &'a str) -> zbus::blocking::Proxy<'a> {
+        zbus::blocking::proxy::Builder::new(c)
+            .destination(BUS_NAME)
+            .unwrap()
+            .path(OBJECT_PATH)
+            .unwrap()
+            .interface(iface)
+            .unwrap()
+            .cache_properties(zbus::proxy::CacheProperties::No)
+            .build()
+            .unwrap()
+    }
+
     /// Full D-Bus round trip when a session bus exists (skipped otherwise).
     /// A private dbus-daemon is used when available so the user's session is
     /// never touched.
@@ -744,7 +809,12 @@ mod tests {
         let sock = dir.join("bus");
         let addr = format!("unix:path={}", sock.display());
         let Ok(mut daemon) = std::process::Command::new("dbus-daemon")
-            .args(["--session", "--nofork", "--nopidfile", &format!("--address={addr}")])
+            .args([
+                "--session",
+                "--nofork",
+                "--nopidfile",
+                &format!("--address={addr}"),
+            ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
@@ -764,39 +834,42 @@ mod tests {
                 ..Default::default()
             }),
         });
-        // Build the service connection explicitly on the private bus.
         let m = Mpris::new(ctl.clone(), cache("bus"));
-        let conn = zbus::blocking::connection::Builder::address(addr.as_str())
-            .unwrap()
-            .build()
-            .unwrap();
-        conn.object_server()
-            .at(OBJECT_PATH, Root { shared: m.shared.clone() })
-            .unwrap();
-        conn.object_server()
-            .at(OBJECT_PATH, PlayerIface { shared: m.shared.clone() })
-            .unwrap();
-        conn.request_name(BUS_NAME).unwrap();
-        *lock(&m.shared.conn) = Some(conn);
-        m.shared.available.store(true, Ordering::SeqCst);
+        assert!(m.start_on(zbus::blocking::connection::Builder::address(addr.as_str())));
+        assert_eq!(m.status(), "READY");
 
         let client = zbus::blocking::connection::Builder::address(addr.as_str())
             .unwrap()
             .build()
             .unwrap();
-        let root = zbus::blocking::Proxy::new(&client, BUS_NAME, OBJECT_PATH, "org.mpris.MediaPlayer2").unwrap();
+        let root = uncached(&client, "org.mpris.MediaPlayer2");
         assert_eq!(root.get_property::<String>("Identity").unwrap(), "NPLAY");
-        assert_eq!(root.get_property::<String>("DesktopEntry").unwrap(), "nplay");
-        let player = zbus::blocking::Proxy::new(&client, BUS_NAME, OBJECT_PATH, PLAYER_IFACE).unwrap();
-        assert_eq!(player.get_property::<String>("PlaybackStatus").unwrap(), "Paused");
+        assert_eq!(
+            root.get_property::<String>("DesktopEntry").unwrap(),
+            "nplay"
+        );
+        let player = uncached(&client, PLAYER_IFACE);
+        assert_eq!(
+            player.get_property::<String>("PlaybackStatus").unwrap(),
+            "Paused"
+        );
         player.call_method("PlayPause", &()).unwrap();
-        assert_eq!(player.get_property::<String>("PlaybackStatus").unwrap(), "Playing");
+        assert_eq!(
+            player.get_property::<String>("PlaybackStatus").unwrap(),
+            "Playing"
+        );
         player.call_method("Play", &()).unwrap();
-        assert_eq!(ctl.calls.load(Ordering::SeqCst), 1, "Play while playing is a no-op");
+        assert_eq!(
+            ctl.calls.load(Ordering::SeqCst),
+            1,
+            "Play while playing is a no-op"
+        );
         player.call_method("Seek", &(5_000_000i64)).unwrap();
         assert_eq!(lock(&ctl.st).position, 15.0);
         let tid = ObjectPath::try_from("/org/nplay/track/x").unwrap();
-        player.call_method("SetPosition", &(tid, 2_000_000i64)).unwrap();
+        player
+            .call_method("SetPosition", &(tid, 2_000_000i64))
+            .unwrap();
         assert_eq!(lock(&ctl.st).position, 2.0);
         assert_eq!(player.get_property::<f64>("Volume").unwrap(), 0.8);
         player.set_property("Volume", 0.5f64).unwrap();
@@ -819,6 +892,11 @@ mod tests {
         assert_eq!(args.interface_name().as_str(), PLAYER_IFACE);
         assert!(args.changed_properties().contains_key("PlaybackStatus"));
         // A second instance sees the name taken and reports external.
+        let other = Mpris::new(ctl.clone(), cache("bus2"));
+        assert!(other.start_on(zbus::blocking::connection::Builder::address(addr.as_str())));
+        assert!(other.external());
+        assert_eq!(other.status(), "READY · external instance");
+        other.changed(&[]);
         m.stop();
         assert!(!m.available());
         let _ = daemon.kill();

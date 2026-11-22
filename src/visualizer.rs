@@ -431,7 +431,10 @@ except (BrokenPipeError, KeyboardInterrupt):
 
     #[test]
     fn unexpected_exit_notifies_and_cleans_up() {
-        let body = FAKE.replace("limit = int(os.environ.get(\"FAKE_CAVA_LIMIT\", \"0\"))", "limit = 3");
+        let body = FAKE.replace(
+            "limit = int(os.environ.get(\"FAKE_CAVA_LIMIT\", \"0\"))",
+            "limit = 3",
+        );
         let Some(bin) = fake_cava("exit", &body) else {
             return;
         };

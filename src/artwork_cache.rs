@@ -301,7 +301,10 @@ mod tests {
         assert_eq!(a, b);
         let direct = c.key("https://nav.example/rest/getCoverArt.view?id=al-1");
         assert_eq!(a, direct);
-        assert_ne!(a, c.key("https://nav.example/rest/getCoverArt.view?id=al-2"));
+        assert_ne!(
+            a,
+            c.key("https://nav.example/rest/getCoverArt.view?id=al-2")
+        );
         assert_eq!(a.len(), 64);
     }
 
@@ -407,7 +410,10 @@ mod tests {
         let p = c.fetch(&url, 5.0, &user_agent()).unwrap();
         assert_eq!(std::fs::read(&p).unwrap(), b"PNG!");
         assert!(!p.to_string_lossy().contains("secret"));
-        assert_eq!(h.join().unwrap(), format!("User-Agent: NPLAY/{}", crate::VERSION));
+        assert_eq!(
+            h.join().unwrap(),
+            format!("User-Agent: NPLAY/{}", crate::VERSION)
+        );
         // Second call is a cache hit (no server any more).
         assert_eq!(c.fetch(&url, 1.0, "x"), Some(p));
         let _ = std::fs::remove_dir_all(root);

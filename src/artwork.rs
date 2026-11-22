@@ -182,7 +182,9 @@ impl Artwork {
     }
 
     pub fn kitty(&self) -> bool {
-        lock(&self.inner.state).kitty.unwrap_or_else(kitty_supported)
+        lock(&self.inner.state)
+            .kitty
+            .unwrap_or_else(kitty_supported)
     }
 
     pub fn set_kitty(&self, forced: Option<bool>) {

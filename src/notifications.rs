@@ -79,7 +79,11 @@ fn info_str(info: Option<&Map<String, Value>>, k: &str) -> String {
 pub fn message(t: &Track, radio_info: Option<&Map<String, Value>>) -> (String, String) {
     let artist = t.artist.trim();
     let album = t.album.trim();
-    let src = if t.source.is_empty() { "NPLAY" } else { &t.source };
+    let src = if t.source.is_empty() {
+        "NPLAY"
+    } else {
+        &t.source
+    };
     // Live SR is programme-first: avoid P1 / Sveriges Radio duplication.
     if t.source == "sr" && t.kind == "radio" {
         let mut program = info_str(radio_info, "program");
@@ -97,7 +101,11 @@ pub fn message(t: &Track, radio_info: Option<&Map<String, Value>>) -> (String, S
             program.clone()
         };
         let parts: Vec<&str> = [
-            if program.is_empty() { "" } else { channel.as_str() },
+            if program.is_empty() {
+                ""
+            } else {
+                channel.as_str()
+            },
             "Sveriges Radio",
         ]
         .into_iter()
@@ -132,7 +140,11 @@ fn env_set(k: &str) -> bool {
 impl Notifier {
     pub fn new(cfg: crate::config::Config, cache: Option<ArtworkCache>) -> Notifier {
         let cache = cache.unwrap_or_else(|| {
-            let mb = cfg.get("artwork_cache_mb", "500").trim().parse().unwrap_or(500);
+            let mb = cfg
+                .get("artwork_cache_mb", "500")
+                .trim()
+                .parse()
+                .unwrap_or(500);
             ArtworkCache::new(mb)
         });
         Notifier::with_settings(Arc::new(move |k: &str, d: bool| cfg.getbool(k, d)), cache)
@@ -155,7 +167,9 @@ impl Notifier {
 
     pub fn available(&self) -> bool {
         lock(&self.inner.binary).is_some()
-            && (env_set("DBUS_SESSION_BUS_ADDRESS") || env_set("DISPLAY") || env_set("WAYLAND_DISPLAY"))
+            && (env_set("DBUS_SESSION_BUS_ADDRESS")
+                || env_set("DISPLAY")
+                || env_set("WAYLAND_DISPLAY"))
     }
 
     pub fn enabled(&self) -> bool {
@@ -247,7 +261,11 @@ impl Notifier {
         let _ = std::thread::Builder::new()
             .name("nplay-notify".into())
             .spawn(move || {
-                me.send("NPLAY notifications", "System notifications are working.", None);
+                me.send(
+                    "NPLAY notifications",
+                    "System notifications are working.",
+                    None,
+                );
             });
         true
     }
@@ -279,10 +297,7 @@ mod tests {
         assert_eq!(message(&t, None), ("Clip".into(), "Band\nYouTube".into()));
         let mut r = track("sr", "132", "P1", "", "");
         r.kind = "radio".into();
-        assert_eq!(
-            message(&r, None),
-            ("P1".into(), "Sveriges Radio".into())
-        );
+        assert_eq!(message(&r, None), ("P1".into(), "Sveriges Radio".into()));
         let mut info = Map::new();
         info.insert("program".into(), Value::from(" Morgonpasset "));
         assert_eq!(
@@ -310,7 +325,9 @@ mod tests {
 
     #[test]
     fn sends_once_per_track_with_fake_notify_send() {
-        if !env_set("DBUS_SESSION_BUS_ADDRESS") && !env_set("DISPLAY") && !env_set("WAYLAND_DISPLAY")
+        if !env_set("DBUS_SESSION_BUS_ADDRESS")
+            && !env_set("DISPLAY")
+            && !env_set("WAYLAND_DISPLAY")
         {
             // available() needs a session; the environment is not changed here.
             return;
