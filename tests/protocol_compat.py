@@ -30,6 +30,7 @@ VOLATILE = {"server_time", "sampled_at", "pid", "uptime", "instance", "revision"
             "updated", "ts", "time", "at", "scanned_at", "seconds", "ms", "took", "pong",
             "duration_ms", "last_scan", "uptime_s"}
 VERSIONS = {"version", "backend_version"}
+UNORDERED = {"browse-local-recent"}
 RACY = {"playback.next", "playback.previous", "queue.play", "play", "toggle-pause", "toggle-play"}
 
 
@@ -67,7 +68,11 @@ def main():
     os.makedirs(sb + "/config/nplay")
     os.symlink(os.environ.get("FAKE_MPV", HERE + "/tools/fake-mpv"), sb + "/bin/mpv")
     os.symlink(os.environ.get("FAKE_CAVA", HERE + "/tools/fake-cava"), sb + "/bin/cava")
-    env["PATH"] = sb + "/bin:" + env["PATH"]
+    # A fixed tool set, whatever the host has: yt-dlp present, librespot absent.
+    with open(sb + "/bin/yt-dlp", "w") as f:
+        f.write("#!/bin/sh\necho 2025.04.30\n")
+    os.chmod(sb + "/bin/yt-dlp", 0o755)
+    env["PATH"] = sb + "/bin:" + "/usr/bin:/bin"
     music = sb + "/home/Music"
     for d, n in (("Artist/Album", 3), ("Band/Second", 4)):
         os.makedirs(music + "/" + d)
@@ -125,6 +130,9 @@ def main():
                 out.append("## %s\n%s" % (label or method, line.decode().rstrip()))
             else:
                 mm = mask(m, sb=sb)
+                # "Recently added" order follows the scan (readdir) order.
+                if (label or method) in UNORDERED and isinstance(mm.get("result"), dict):
+                    mm["result"]["items"] = sorted(mm["result"].get("items", []), key=lambda t: json.dumps(t))
                 # Transport state right after a track change races the player.
                 if (label or method) in RACY and isinstance(mm.get("result"), dict) and "status" in mm["result"]:
                     mm["result"]["status"] = "<status>"
