@@ -105,11 +105,12 @@ class Screen:
     def text(s): return "\n".join("".join(r) for r in s.g)
     def row(s, r): return "".join(s.g[r if r >= 0 else ROWS + r])
 
-def start():
+def start(env={}):
     t0 = time.monotonic()
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-256color"
+        os.environ.update(env)
         os.execv(BIN, [BIN])
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
     return pid, fd, t0
@@ -231,6 +232,25 @@ while time.monotonic() < end:
 print("exit code after SIGTERM:", code)
 if code != 0: failures.append(f"SIGTERM exit code {code}")
 if b"\x1b[?1049l" not in scr.raw: failures.append("SIGTERM: terminal not restored")
+
+# Kitty graphics terminal: cover placeholder in Now Playing, and resizing.
+scr = Screen(); pid, fd, t0 = start({"KITTY_WINDOW_ID": "1"})
+wait_for(lambda: "? help" in scr.row(-1), 5, "kitty start")
+# The session restored the last track, shown with its cover placeholder.
+wait_for(has("│  LOCAL   │"), 5, "kitty: cover placeholder on Now Playing")
+wait_for(has("Resume with SPACE"), 2, "kitty: restored session offers resume")
+ROWS, COLS = 24, 80
+scr.g = [[" "] * COLS for _ in range(ROWS)]
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
+os.kill(pid, signal.SIGWINCH)
+wait_for(lambda: "SPACE resume" in scr.row(-1) and "Song B" in scr.text(), 3, "redraw after resize to 80x24")
+send(b"Q")
+end = time.monotonic() + 5; code = None
+while time.monotonic() < end:
+    pump(0.05)
+    r = os.waitpid(pid, os.WNOHANG)
+    if r[0]: code = os.waitstatus_to_exitcode(r[1]); break
+if code != 0: failures.append(f"kitty run exit code {code}")
 
 if failures:
     print("FAILED:", "; ".join(failures)); sys.exit(1)
