@@ -1133,12 +1133,8 @@ impl App {
     /// `ctx:*` actions on the Actions menu target (or the current track).
     fn context_action(&self, action: &str, ui: &UiRef) {
         let u = Some(ui);
-        let Some(t) = self
-            .state()
-            .action_target
-            .clone()
-            .or_else(|| self.current())
-        else {
+        let target = self.state().action_target.clone();
+        let Some(t) = target.or_else(|| self.current()) else {
             ui.status("Actions · no target");
             return;
         };

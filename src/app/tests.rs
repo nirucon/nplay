@@ -710,6 +710,15 @@ fn queue_prompts_and_playlists() {
     assert_eq!(a.state().later_queue[0].id, "t");
     a.open_source("ctx:rate5", &ui);
     assert_eq!(a.db.rating_get("t", "local").unwrap(), 5);
+    // Without an Actions target the current track is used (no self-deadlock).
+    a.set_action_target(None);
+    a.state().current = Some(track("cur", "C"));
+    a.open_source("ctx:next", &ui);
+    assert_eq!(a.queue()[0].id, "cur");
+    a.set_action_target(None);
+    a.state().current = None;
+    a.open_source("ctx:next", &ui);
+    assert_eq!(r.last_status(), "Actions · no target");
 }
 
 #[test]
