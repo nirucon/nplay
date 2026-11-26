@@ -1,3 +1,12 @@
+# NPLAY 2.0.2: the position of a new track
+
+- Fix: when a new track started, Now Playing changed before the position of
+  the previous track was cleared. While a stream (Navidrome, radio) still
+  buffered, mpv had no time yet, so the change carried the previous track's
+  position, and NIRUAMP's clock started at, for example, 0:08 or 0:20 instead
+  of 0:00. The new track's position (0, or the resume point) is now in place
+  before the change is announced.
+
 # NPLAY 2.0.1: installer fix
 
 - Fix: `install.sh` read `/etc/os-release` into its own variables, so the

@@ -168,17 +168,21 @@ pub fn commit(
         app.stop_spotify_session();
     }
     app.player.set_pause(false);
-    app.commit_playback_session(&t, "mpv", "playing");
+    // The new track's position must be in place before Now Playing changes:
+    // the change is announced at once, and while a stream still buffers mpv
+    // has no time-pos yet, so the announcement would otherwise carry the
+    // previous track's resume position (frontends then count on from it).
+    let resume = resume_pos > 0.0 && t.seekable;
     let vol = {
         let mut st = app.state();
         st.resume_candidate = false;
-        st.resume_position = 0.0;
+        st.resume_position = if resume { resume_pos } else { 0.0 };
         st.volume
     };
+    app.commit_playback_session(&t, "mpv", "playing");
     app.player.set_volume(vol);
-    if resume_pos > 0.0 && t.seekable {
+    if resume {
         app.player.set_position(resume_pos);
-        app.state().resume_position = resume_pos;
     }
     let _ = app.db.history_add(&t);
     app.save_state();

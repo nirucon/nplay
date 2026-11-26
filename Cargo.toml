@@ -1,6 +1,6 @@
 [package]
 name = "nplay"
-version = "2.0.1"
+version = "2.0.2"
 edition = "2021"
 rust-version = "1.85"
 description = "Terminal music, radio and podcast player built around mpv, with a local control service"
